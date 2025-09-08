@@ -159,53 +159,73 @@ app.get("/", (_req, res) => {
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>Ffis Presents</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800;900&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg:#0b0c10; --card:#111316; --muted:#9aa3af; --text:#e5e7eb;
-    --accent:#8b5cf6; --green:#10b981; --danger:#ef4444; --ring:#2a2f38;
+    --bg:#0b0c10; --card:#0e1116; --muted:#9aa3af; --text:#e5e7eb;
+    --accent:#7c3aed; --accent-2:#6d28d9; --danger:#ef4444; --ring:#2a2f38;
+    --border:#181c22; --shadow: 0 8px 30px rgba(0,0,0,.35);
   }
   * { box-sizing:border-box }
-  body { margin:0; background:var(--bg); color:var(--text); font-family:Inter,sans-serif; }
-  header { padding:24px 20px; max-width:1100px; margin:0 auto; display:flex; flex-direction:column; gap:14px; align-items:center; }
-  h1 { margin:0; font-size:48px; font-weight:800; letter-spacing:.3px; text-align:center; }
+  body { margin:0; background:var(--bg); color:var(--text); font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto; }
+
+  header { position:sticky; top:0; z-index:10; backdrop-filter: blur(8px);
+    background: linear-gradient(180deg, rgba(11,12,16,.85), rgba(11,12,16,.65) 70%, transparent);
+    border-bottom:1px solid rgba(255,255,255,.04);
+  }
+  .header-inner { padding:22px 20px; max-width:1200px; margin:0 auto; display:flex; flex-direction:column; gap:16px; align-items:center; }
+  h1 { margin:0; font-size:56px; font-weight:900; letter-spacing:.3px; text-align:center; }
+
   .controls { width:100%; display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
-  input { flex:1; padding:12px; border-radius:10px; border:1px solid var(--ring); background:#0f1115; color:var(--text); }
-  button { padding:12px 16px; border-radius:10px; border:0; background:var(--accent); color:white; font-weight:600; cursor:pointer; }
-  main { padding:20px; max-width:1100px; margin:0 auto; }
-  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:18px; }
-  .card { background:var(--card); border:1px solid #1c1f25; border-radius:14px; overflow:hidden; box-shadow:0 4px 24px rgba(0,0,0,.25); }
+  input { flex:1; padding:12px 14px; border-radius:12px; border:1px solid var(--ring); background:#0f1115; color:var(--text); }
+  button { padding:12px 16px; border-radius:12px; border:0; background:var(--accent); color:white; font-weight:700; cursor:pointer; box-shadow: var(--shadow); }
+  button:hover { background:var(--accent-2); }
+
+  main { padding:24px; max-width:1200px; margin:0 auto; }
+  .meta-bar { color:var(--muted); font-size:12px; margin:0 0 14px; text-align:center; }
+
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:22px; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:16px; overflow:hidden; box-shadow: var(--shadow); transition: transform .12s ease; }
+  .card:hover { transform: translateY(-2px); }
   .thumb { aspect-ratio: 16/10; background:#0f1216; display:grid; place-items:center; }
   .thumb img { width:100%; height:100%; object-fit:contain; }
-  .pad { padding:14px; }
-  .title { font-weight:600; }
+
+  .pad { padding:16px; }
+  .row { display:flex; gap:10px; align-items:center; justify-content:space-between; }
+  .title { font-weight:700; line-height:1.3; }
   .title.bought { text-decoration:line-through; color:#9aa3af }
-  .desc { color:var(--green); font-size:13px; margin-top:6px; line-height:1.35; }
-  .meta { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:10px; }
-  .price { font-size:18px; font-weight:700; }
-  .row { display:flex; gap:8px; align-items:center; justify-content:space-between; margin-top:10px; }
+  .desc { color:#a3e635; font-size:12px; margin-top:6px; line-height:1.35; }
+
+  .badge { display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border-radius:999px; background:#121722; border:1px solid #1b2230; font-size:12px; color:#cbd5e1; }
+  .price { font-size:20px; font-weight:900; }
+
+  .btn-danger { background:var(--danger); }
+  .btn-danger:hover { filter:brightness(.95); }
+  .check { display:flex; align-items:center; gap:8px; }
   .muted { color:var(--muted); font-size:12px; }
   .link { color:#93c5fd; text-decoration:underline; }
-  .btn-danger { background:var(--danger); }
-  .check { display:flex; align-items:center; gap:8px; }
-  .empty { color:var(--muted); padding:20px; border:1px dashed #444; border-radius:8px; text-align:center; }
+
+  .empty { color:var(--muted); padding:24px; border:1px dashed #444; border-radius:12px; text-align:center; }
 
   .notes { margin-top:12px; }
   .notes label { display:block; margin-bottom:6px; color:var(--muted); font-size:12px; }
   .notes textarea {
-    width:100%; min-height:80px; padding:10px; border-radius:10px;
+    width:100%; min-height:80px; padding:12px; border-radius:12px;
     border:1px solid var(--ring); background:#0f1115; color:var(--text); resize:vertical;
   }
-  .saved { color:var(--green); font-size:12px; margin-top:6px; display:none; }
+  .saved { color:#34d399; font-size:12px; margin-top:6px; display:none; }
 </style>
 </head>
 <body>
   <header>
-    <h1>🎁 Ffis Presents</h1>
-    <div class="controls">
-      <input type="url" id="url" placeholder="Paste a product link…" />
-      <button id="add">Add</button>
-      <button id="refreshAll">Refresh All</button>
+    <div class="header-inner">
+      <h1>🎁 Ffis Presents</h1>
+      <div class="controls">
+        <input type="url" id="url" placeholder="Paste a product link…" />
+        <button id="add">Add</button>
+        <button id="refreshAll">Refresh All</button>
+      </div>
+      <div class="meta-bar"><span id="count">0</span> items • Prices shown in £ (no conversion)</div>
     </div>
   </header>
   <main>
@@ -219,10 +239,11 @@ const elUrl = document.getElementById("url");
 const btnAdd = document.getElementById("add");
 const btnRefreshAll = document.getElementById("refreshAll");
 
-function fmtPrice(v, c) {
+// Always display as GBP (no currency conversion)
+function fmtPriceGBP(v) {
   if (v == null) return "—";
-  try { return new Intl.NumberFormat("en-GB",{style:"currency",currency:c||"GBP"}).format(v); }
-  catch { return v; }
+  try { return new Intl.NumberFormat("en-GB",{style:"currency",currency:"GBP"}).format(v); }
+  catch { return "£" + Number(v).toFixed(2); }
 }
 function debounce(fn, ms){ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), ms); }; }
 const saveNote = debounce(async (id, text)=>{
@@ -234,11 +255,20 @@ const saveNote = debounce(async (id, text)=>{
   if (s) { s.style.display="block"; setTimeout(()=>s.style.display="none", 1200); }
 }, 600);
 
+function storeBadge(url) {
+  try {
+    const u = new URL(url);
+    const host = u.hostname.replace(/^www\\./,'');
+    return '<span class="badge">🛍️ '+host+'</span>';
+  } catch { return ''; }
+}
+
 async function load() {
   const res = await fetch("/api/items");
   const data = await res.json();
   elList.innerHTML = "";
   elEmpty.style.display = data.length ? "none" : "block";
+  document.getElementById("count").textContent = data.length;
 
   for (const it of data) {
     const card = document.createElement("div");
@@ -250,13 +280,16 @@ async function load() {
     card.innerHTML = \`
       <div class="thumb">\${img}</div>
       <div class="pad">
-        <div class="title \${it.bought ? "bought": ""}">\${it.title || "(No title)"} </div>
-        \${desc}
-        <div class="meta">
-          <div class="price">\${fmtPrice(it.price_value ?? it.priceValue, it.price_currency ?? it.priceCurrency)}</div>
-          <a class="link" href="\${it.url}" target="_blank">Open product</a>
-        </div>
         <div class="row">
+          <div class="title \${it.bought ? "bought": ""}">\${it.title || "(No title)"} </div>
+          \${storeBadge(it.url)}
+        </div>
+        \${desc}
+        <div class="row" style="margin-top:12px;">
+          <div class="price">\${fmtPriceGBP(it.price_value ?? it.priceValue)}</div>
+          <a class="link" href="\${it.url}" target="_blank" rel="noopener">Open product</a>
+        </div>
+        <div class="row" style="margin-top:10px;">
           <label class="check">
             <input type="checkbox" \${it.bought ? "checked": ""} data-id="\${it.id}" class="toggleBought" />
             <span class="muted">Already bought</span>
@@ -277,7 +310,6 @@ async function load() {
     elList.appendChild(card);
   }
 
-  // actions
   document.querySelectorAll(".toggleBought").forEach(cb => {
     cb.onchange = async (e) => {
       const id = e.target.getAttribute("data-id");

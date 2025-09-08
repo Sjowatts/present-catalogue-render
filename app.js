@@ -86,4 +86,8 @@ load();
 </script>
 </body>
 </html>`);
+<<<<<<< HEAD
 });
+=======
+});
+>>>>>>> 4e8f1c6 (Update UI)

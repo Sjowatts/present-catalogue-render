@@ -22,6 +22,7 @@ const normalizeHost = (url) => {
   catch { return ""; }
 };
 
+/* ---------- DB setup ---------- */
 async function initDb() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS items (
@@ -43,10 +44,30 @@ async function initDb() {
   await pool.query(`ALTER TABLE items ADD COLUMN IF NOT EXISTS notes TEXT;`);
 }
 
+/* ---------- Currency conversion (to GBP) ---------- */
+async function convertToGBP(value, currency) {
+  if (value == null) return { value: null, currency: "GBP" };
+  const cur = String(currency || "").toUpperCase();
+  if (!cur || cur === "GBP") return { value, currency: "GBP" };
+  try {
+    const res = await fetch(`https://api.exchangerate.host/convert?from=${encodeURIComponent(cur)}&to=GBP&amount=${encodeURIComponent(value)}`);
+    const data = await res.json();
+    if (data && typeof data.result === "number") {
+      return { value: data.result, currency: "GBP" };
+    }
+  } catch (e) {
+    console.error("Conversion failed:", e);
+  }
+  // Fallback: keep original value/currency (UI will still show £, but value may be foreign)
+  return { value, currency: cur || "GBP" };
+}
+
+/* ---------- Scrape + convert ---------- */
 async function scrapeProduct(url) {
   const host = normalizeHost(url);
   let title=null, image=null, priceValue=null, priceCurrency=null, description=null, source="heuristics";
 
+  // First try fast fetch
   try {
     const res = await fetch(url, {
       headers: {
@@ -63,12 +84,22 @@ async function scrapeProduct(url) {
     }
   } catch {}
 
+  // Fallback to Playwright render if no price
   if (priceValue == null) {
     try {
       const html = await renderHtmlWithPlaywright(url);
       ({ title, image, priceValue, priceCurrency, description } = scrapeWithHeuristics(html, url));
       source = "playwright";
     } catch {}
+  }
+
+  // 💱 Convert to GBP before storing
+  if (priceValue != null) {
+    const conv = await convertToGBP(priceValue, priceCurrency || "GBP");
+    priceValue = conv.value;
+    priceCurrency = conv.currency; // "GBP"
+  } else {
+    priceCurrency = "GBP";
   }
 
   return {
@@ -78,7 +109,7 @@ async function scrapeProduct(url) {
     image,
     description: description || null,
     priceValue: priceValue ?? null,
-    priceCurrency: priceCurrency ?? null,
+    priceCurrency: priceCurrency ?? "GBP",
     lastChecked: new Date().toISOString(),
     source
   };
@@ -211,7 +242,7 @@ app.get("/", (_req, res) => {
   .notes label { display:block; margin-bottom:6px; color:var(--muted); font-size:12px; }
   .notes textarea {
     width:100%; min-height:80px; padding:12px; border-radius:12px;
-    border:1px solid var(--ring); background:#0f1115; color:var(--text); resize:vertical;
+    border:1px solid var(--ring); background:#0f1115; color:#e5e7eb; resize:vertical;
   }
   .saved { color:#34d399; font-size:12px; margin-top:6px; display:none; }
 </style>
@@ -225,7 +256,7 @@ app.get("/", (_req, res) => {
         <button id="add">Add</button>
         <button id="refreshAll">Refresh All</button>
       </div>
-      <div class="meta-bar"><span id="count">0</span> items • Prices shown in £ (no conversion)</div>
+      <div class="meta-bar"><span id="count">0</span> items • Prices converted and shown in £</div>
     </div>
   </header>
   <main>
@@ -239,7 +270,7 @@ const elUrl = document.getElementById("url");
 const btnAdd = document.getElementById("add");
 const btnRefreshAll = document.getElementById("refreshAll");
 
-// Always display as GBP (no currency conversion)
+// Always display as GBP (values already converted on the server)
 function fmtPriceGBP(v) {
   if (v == null) return "—";
   try { return new Intl.NumberFormat("en-GB",{style:"currency",currency:"GBP"}).format(v); }

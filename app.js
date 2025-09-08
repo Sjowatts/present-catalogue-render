@@ -9,8 +9,8 @@ import { renderHtmlWithPlaywright } from "./lib/renderers/playwright.js";
 import pgPkg from "pg";
 const { Pool } = pgPkg;
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : undefined
+  connectionString: (process.env.DATABASE_URL || "").replace(/^postgresql:\/\//, "postgres://"),
+  ssl: { rejectUnauthorized: false }
 });
 
 const app = express();
@@ -23,7 +23,6 @@ const normalizeHost = (url) => {
 };
 
 async function initDb() {
-  // Table + new "bought" column for persistence & state
   await pool.query(`
     CREATE TABLE IF NOT EXISTS items (
       id TEXT PRIMARY KEY,
@@ -36,10 +35,12 @@ async function initDb() {
       price_currency TEXT,
       last_checked TIMESTAMPTZ,
       source TEXT,
-      bought BOOLEAN DEFAULT FALSE
+      bought BOOLEAN DEFAULT FALSE,
+      notes TEXT
     );
   `);
   await pool.query(`ALTER TABLE items ADD COLUMN IF NOT EXISTS bought BOOLEAN DEFAULT FALSE;`);
+  await pool.query(`ALTER TABLE items ADD COLUMN IF NOT EXISTS notes TEXT;`);
 }
 
 async function scrapeProduct(url) {
@@ -96,11 +97,11 @@ app.post("/api/add", async (req, res) => {
     const data = await scrapeProduct(url);
     const id = `${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
     await pool.query(
-      `INSERT INTO items (id,url,store,title,image,description,price_value,price_currency,last_checked,source,bought)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,false)`,
+      `INSERT INTO items (id,url,store,title,image,description,price_value,price_currency,last_checked,source,bought,notes)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,false,null)`,
       [id, data.url, data.store, data.title, data.image, data.description, data.priceValue, data.priceCurrency, data.lastChecked, data.source]
     );
-    res.json({ id, ...data, bought:false });
+    res.json({ id, ...data, bought:false, notes:null });
   } catch (e) {
     res.status(500).json({ error: e.message || "Scrape failed" });
   }
@@ -132,6 +133,15 @@ app.post("/api/items/:id/bought", async (req,res) => {
   res.json(rows[0] || { ok:true });
 });
 
+// Update notes
+app.post("/api/items/:id/notes", async (req,res) => {
+  const { id } = req.params;
+  const { notes } = req.body || {};
+  await pool.query(`UPDATE items SET notes=$2 WHERE id=$1`, [id, notes ?? null]);
+  const { rows } = await pool.query(`SELECT notes FROM items WHERE id=$1`, [id]);
+  res.json(rows[0] || { ok:true });
+});
+
 // Delete item
 app.delete("/api/items/:id", async (req,res) => {
   const { id } = req.params;
@@ -149,7 +159,7 @@ app.get("/", (_req, res) => {
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>Ffis Presents</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
 <style>
   :root {
     --bg:#0b0c10; --card:#111316; --muted:#9aa3af; --text:#e5e7eb;
@@ -157,8 +167,9 @@ app.get("/", (_req, res) => {
   }
   * { box-sizing:border-box }
   body { margin:0; background:var(--bg); color:var(--text); font-family:Inter,sans-serif; }
-  header { padding:20px; max-width:1100px; margin:0 auto; display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
-  h1 { margin:0; font-size:22px; letter-spacing:.3px }
+  header { padding:24px 20px; max-width:1100px; margin:0 auto; display:flex; flex-direction:column; gap:14px; align-items:center; }
+  h1 { margin:0; font-size:48px; font-weight:800; letter-spacing:.3px; text-align:center; }
+  .controls { width:100%; display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
   input { flex:1; padding:12px; border-radius:10px; border:1px solid var(--ring); background:#0f1115; color:var(--text); }
   button { padding:12px 16px; border-radius:10px; border:0; background:var(--accent); color:white; font-weight:600; cursor:pointer; }
   main { padding:20px; max-width:1100px; margin:0 auto; }
@@ -178,14 +189,24 @@ app.get("/", (_req, res) => {
   .btn-danger { background:var(--danger); }
   .check { display:flex; align-items:center; gap:8px; }
   .empty { color:var(--muted); padding:20px; border:1px dashed #444; border-radius:8px; text-align:center; }
+
+  .notes { margin-top:12px; }
+  .notes label { display:block; margin-bottom:6px; color:var(--muted); font-size:12px; }
+  .notes textarea {
+    width:100%; min-height:80px; padding:10px; border-radius:10px;
+    border:1px solid var(--ring); background:#0f1115; color:var(--text); resize:vertical;
+  }
+  .saved { color:var(--green); font-size:12px; margin-top:6px; display:none; }
 </style>
 </head>
 <body>
   <header>
     <h1>🎁 Ffis Presents</h1>
-    <input type="url" id="url" placeholder="Paste a product link…" />
-    <button id="add">Add</button>
-    <button id="refreshAll">Refresh All</button>
+    <div class="controls">
+      <input type="url" id="url" placeholder="Paste a product link…" />
+      <button id="add">Add</button>
+      <button id="refreshAll">Refresh All</button>
+    </div>
   </header>
   <main>
     <div id="list" class="grid"></div>
@@ -203,6 +224,15 @@ function fmtPrice(v, c) {
   try { return new Intl.NumberFormat("en-GB",{style:"currency",currency:c||"GBP"}).format(v); }
   catch { return v; }
 }
+function debounce(fn, ms){ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), ms); }; }
+const saveNote = debounce(async (id, text)=>{
+  await fetch("/api/items/"+id+"/notes", {
+    method:"POST", headers:{ "content-type":"application/json" },
+    body: JSON.stringify({ notes: text })
+  });
+  const s = document.getElementById("saved-"+id);
+  if (s) { s.style.display="block"; setTimeout(()=>s.style.display="none", 1200); }
+}, 600);
 
 async function load() {
   const res = await fetch("/api/items");
@@ -215,6 +245,7 @@ async function load() {
     card.className = "card";
     const img = it.image ? '<img src="'+it.image+'" alt="">' : '<div style="color:#9aa3af">no image</div>';
     const desc = it.description ? '<div class="desc">'+it.description+'</div>' : '';
+    const notes = it.notes || "";
 
     card.innerHTML = \`
       <div class="thumb">\${img}</div>
@@ -235,12 +266,18 @@ async function load() {
             <button class="delete btn-danger" data-id="\${it.id}">Remove</button>
           </div>
         </div>
+
+        <div class="notes">
+          <label>Notes</label>
+          <textarea class="noteBox" data-id="\${it.id}" placeholder="Size, colour, delivery notes…">\${notes.replace(/</g,"&lt;")}</textarea>
+          <div class="saved" id="saved-\${it.id}">Saved</div>
+        </div>
       </div>
     \`;
     elList.appendChild(card);
   }
 
-  // wire up actions
+  // actions
   document.querySelectorAll(".toggleBought").forEach(cb => {
     cb.onchange = async (e) => {
       const id = e.target.getAttribute("data-id");
@@ -264,6 +301,12 @@ async function load() {
       const id = btn.getAttribute("data-id");
       await fetch("/api/refresh/"+id, { method:"POST" });
       load();
+    };
+  });
+  document.querySelectorAll(".noteBox").forEach(ta => {
+    ta.oninput = (e) => {
+      const id = ta.getAttribute("data-id");
+      saveNote(id, e.target.value);
     };
   });
 }

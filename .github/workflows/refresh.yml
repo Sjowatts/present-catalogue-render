@@ -1,0 +1,21 @@
+name: Daily price check
+on:
+  schedule:
+    - cron: "43 6 * * *"
+  workflow_dispatch:
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ask the app to re-check every price
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          REFRESH_TOKEN: ${{ secrets.REFRESH_TOKEN }}
+        run: |
+          if [ -z "$REFRESH_TOKEN" ]; then
+            echo "REFRESH_TOKEN secret is not set, skipping."
+            exit 0
+          fi
+          curl -fsS --retry 5 --retry-delay 30 --max-time 120 -X POST \
+            -H "x-refresh-token: $REFRESH_TOKEN" "$APP_URL/api/refresh-all"

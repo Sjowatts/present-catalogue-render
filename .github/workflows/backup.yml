@@ -13,7 +13,7 @@ jobs:
           APP_URL: ${{ secrets.APP_URL }}
         run: |
           curl -fsS --retry 5 --retry-delay 30 --max-time 120 "$APP_URL/api/export" -o items.json
-          test "$(head -c1 items.json)" = "["
+          case "$(head -c1 items.json)" in "{"|"[") ;; *) echo "Export did not look like JSON"; exit 1 ;; esac
       - uses: actions/upload-artifact@v4
         with:
           name: ffis-presents-backup-${{ github.run_id }}

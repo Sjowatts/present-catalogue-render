@@ -8,10 +8,19 @@ import { renderHtmlWithPlaywright } from "./lib/renderers/playwright.js";
 
 import pgPkg from "pg";
 const { Pool } = pgPkg;
+const dbUrl = (process.env.DATABASE_URL || "").replace(/^postgresql:\/\//, "postgres://");
+const isLocalDb = /@(localhost|127\.0\.0\.1)/.test(dbUrl);
 const pool = new Pool({
-  connectionString: (process.env.DATABASE_URL || "").replace(/^postgresql:\/\//, "postgres://"),
-  ssl: { rejectUnauthorized: false }
+  connectionString: dbUrl,
+  ssl: isLocalDb ? false : { rejectUnauthorized: false },
+  keepAlive: true,
+  max: 5,
+  idleTimeoutMillis: 10000,
+  connectionTimeoutMillis: 15000
 });
+// Serverless Postgres (Neon etc.) drops idle connections; don't crash on it.
+pool.on("error", (e) => console.error("Idle DB client error:", e.message));
+let dbReady = false;
 
 const app = express();
 app.use(express.json());
@@ -42,6 +51,20 @@ async function initDb() {
   `);
   await pool.query(`ALTER TABLE items ADD COLUMN IF NOT EXISTS bought BOOLEAN DEFAULT FALSE;`);
   await pool.query(`ALTER TABLE items ADD COLUMN IF NOT EXISTS notes TEXT;`);
+}
+
+async function initDbWithRetry() {
+  if (!dbUrl) console.error("DATABASE_URL is not set");
+  for (let attempt = 1; !dbReady; attempt++) {
+    try {
+      await initDb();
+      dbReady = true;
+      console.log("Database ready");
+    } catch (e) {
+      console.error("DB init failed (attempt " + attempt + "): " + e.message);
+      await new Promise(r => setTimeout(r, Math.min(30000, 2000 * attempt)));
+    }
+  }
 }
 
 /* ---------- Currency conversion (to GBP) ---------- */
@@ -116,6 +139,41 @@ async function scrapeProduct(url) {
 }
 
 /* ---------------- API ---------------- */
+app.get("/healthz", (_req, res) => res.json({ ok: true, db: dbReady }));
+
+app.use("/api", (_req, res, next) => {
+  if (dbReady) return next();
+  res.status(503).json({ error: "Database not connected yet. Check DATABASE_URL." });
+});
+
+// Download every saved item as JSON (backup)
+app.get("/api/export", async (_req, res) => {
+  const { rows } = await pool.query(`SELECT * FROM items ORDER BY last_checked DESC`);
+  res.setHeader("content-type", "application/json");
+  res.setHeader("content-disposition", 'attachment; filename="ffis-presents-' + new Date().toISOString().slice(0,10) + '.json"');
+  res.send(JSON.stringify(rows, null, 2));
+});
+
+// Restore items from a previous export (existing ids are left untouched)
+app.post("/api/import", express.json({ limit: "20mb" }), async (req, res) => {
+  const items = Array.isArray(req.body) ? req.body : req.body?.items;
+  if (!Array.isArray(items)) return res.status(400).json({ error: "Expected a JSON array of items" });
+  let added = 0;
+  for (const it of items) {
+    if (!it?.url) continue;
+    const id = it.id || `${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
+    const r = await pool.query(
+      `INSERT INTO items (id,url,store,title,image,description,price_value,price_currency,last_checked,source,bought,notes)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) ON CONFLICT (id) DO NOTHING`,
+      [id, it.url, it.store ?? null, it.title ?? null, it.image ?? null, it.description ?? null,
+       it.price_value ?? null, it.price_currency ?? "GBP", it.last_checked ?? new Date().toISOString(),
+       it.source ?? "import", !!it.bought, it.notes ?? null]
+    );
+    added += r.rowCount;
+  }
+  res.json({ ok: true, added });
+});
+
 app.get("/api/items", async (_req, res) => {
   const { rows } = await pool.query(`SELECT * FROM items ORDER BY last_checked DESC`);
   res.json(rows);
@@ -255,6 +313,9 @@ app.get("/", (_req, res) => {
         <input type="url" id="url" placeholder="Paste a product link…" />
         <button id="add">Add</button>
         <button id="refreshAll">Refresh All</button>
+        <a href="/api/export" download><button type="button">Export</button></a>
+        <button id="importBtn" type="button">Import</button>
+        <input type="file" id="importFile" accept="application/json" style="display:none" />
       </div>
       <div class="meta-bar"><span id="count">0</span> items • Prices converted and shown in £</div>
     </div>
@@ -392,6 +453,23 @@ btnRefreshAll.onclick = async () => {
   load();
 };
 
+document.getElementById("importBtn").onclick = () => document.getElementById("importFile").click();
+document.getElementById("importFile").onchange = async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  try {
+    const items = JSON.parse(await file.text());
+    const res = await fetch("/api/import", {
+      method:"POST", headers:{ "content-type":"application/json" },
+      body: JSON.stringify(items)
+    });
+    const out = await res.json();
+    alert(res.ok ? "Imported " + out.added + " new items" : (out.error || "Import failed"));
+  } catch (err) { alert("That file isn't a valid export."); }
+  e.target.value = "";
+  load();
+};
+
 load();
 </script>
 </body>
@@ -400,6 +478,6 @@ load();
 
 const PORT = process.env.PORT || 3000;
 (async () => {
-  await initDb();
   app.listen(PORT, () => console.log("Price catalogue on http://localhost:"+PORT));
+  await initDbWithRetry();
 })();

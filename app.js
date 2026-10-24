@@ -157,6 +157,24 @@ app.use("/api", (_req, res, next) => {
 });
 
 // Download every saved item as JSON (backup)
+// Diagnostics: lists every price found on a product page and which one wins.
+// Usage: /api/debug-price?url=https://shop.example/product
+app.get("/api/debug-price", async (req, res) => {
+  const url = String(req.query.url || "");
+  if (!/^https?:\/\//.test(url)) return res.status(400).json({ error: "Pass ?url=https://..." });
+  const out = { url };
+  try {
+    const r = await fetch(url, { headers: { "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36", "accept-language": "en-GB,en;q=0.9" }, redirect: "follow" });
+    out.fetchStatus = r.status;
+    if (r.ok) out.fast = scrapeWithHeuristics(await r.text(), url, { debug: true });
+  } catch (e) { out.fetchError = e.message; }
+  if (out.fast?.priceValue == null) {
+    try { out.playwright = scrapeWithHeuristics(await renderHtmlWithPlaywright(url), url, { debug: true }); }
+    catch (e) { out.playwrightError = e.message; }
+  }
+  res.json(out);
+});
+
 app.get("/api/export", async (_req, res) => {
   const { rows } = await pool.query(`SELECT * FROM items ORDER BY last_checked DESC`);
   res.setHeader("content-type", "application/json");

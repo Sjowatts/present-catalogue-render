@@ -68,21 +68,31 @@ async function initDbWithRetry() {
 }
 
 /* ---------- Currency conversion (to GBP) ---------- */
+// ECB rates via frankfurter.app (free, no API key). Cached for an hour.
+const rateCache = new Map();
+async function gbpRate(cur) {
+  const hit = rateCache.get(cur);
+  if (hit && Date.now() - hit.at < 3600_000) return hit.rate;
+  const res = await fetch(`https://api.frankfurter.app/latest?from=${encodeURIComponent(cur)}&to=GBP`);
+  const data = await res.json();
+  const rate = data?.rates?.GBP;
+  if (typeof rate !== "number") throw new Error("No GBP rate for " + cur);
+  rateCache.set(cur, { rate, at: Date.now() });
+  return rate;
+}
+
 async function convertToGBP(value, currency) {
   if (value == null) return { value: null, currency: "GBP" };
   const cur = String(currency || "").toUpperCase();
   if (!cur || cur === "GBP") return { value, currency: "GBP" };
   try {
-    const res = await fetch(`https://api.exchangerate.host/convert?from=${encodeURIComponent(cur)}&to=GBP&amount=${encodeURIComponent(value)}`);
-    const data = await res.json();
-    if (data && typeof data.result === "number") {
-      return { value: data.result, currency: "GBP" };
-    }
+    const rate = await gbpRate(cur);
+    return { value: Math.round(value * rate * 100) / 100, currency: "GBP" };
   } catch (e) {
-    console.error("Conversion failed:", e);
+    console.error("Conversion failed:", e.message);
   }
-  // Fallback: keep original value/currency (UI will still show £, but value may be foreign)
-  return { value, currency: cur || "GBP" };
+  // Keep the original amount labelled with its own currency; the UI shows that currency.
+  return { value, currency: cur };
 }
 
 /* ---------- Scrape + convert ---------- */
@@ -203,11 +213,17 @@ app.post("/api/refresh/:id", async (req, res) => {
   try {
     const data = await scrapeProduct(rows[0].url);
     await pool.query(
-      `UPDATE items SET store=$2,title=$3,image=$4,description=$5,price_value=$6,price_currency=$7,last_checked=$8,source=$9
+      `UPDATE items SET store=$2,
+         title=CASE WHEN $3 = '(No title found)' THEN title ELSE COALESCE($3, title) END,
+         image=COALESCE($4, image), description=COALESCE($5, description),
+         price_value=COALESCE($6, price_value),
+         price_currency=CASE WHEN $6::numeric IS NULL THEN price_currency ELSE $7 END,
+         last_checked=$8, source=$9
        WHERE id=$1`,
       [id, data.store, data.title, data.image, data.description, data.priceValue, data.priceCurrency, data.lastChecked, data.source]
     );
-    res.json({ id, ...rows[0], ...data });
+    const { rows: fresh } = await pool.query(`SELECT * FROM items WHERE id=$1`, [id]);
+    res.json(fresh[0]);
   } catch (e) {
     res.status(500).json({ error: e.message || "Refresh failed" });
   }
@@ -332,9 +348,10 @@ const btnAdd = document.getElementById("add");
 const btnRefreshAll = document.getElementById("refreshAll");
 
 // Always display as GBP (values already converted on the server)
-function fmtPriceGBP(v) {
+function fmtPriceGBP(v, cur) {
   if (v == null) return "—";
-  try { return new Intl.NumberFormat("en-GB",{style:"currency",currency:"GBP"}).format(v); }
+  const code = cur || "GBP";
+  try { return new Intl.NumberFormat("en-GB",{style:"currency",currency:code}).format(v) + (code === "GBP" ? "" : " (not converted)"); }
   catch { return "£" + Number(v).toFixed(2); }
 }
 function debounce(fn, ms){ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), ms); }; }
@@ -378,7 +395,7 @@ async function load() {
         </div>
         \${desc}
         <div class="row" style="margin-top:12px;">
-          <div class="price">\${fmtPriceGBP(it.price_value ?? it.priceValue)}</div>
+          <div class="price">\${fmtPriceGBP(it.price_value ?? it.priceValue, it.price_currency ?? it.priceCurrency)}</div>
           <a class="link" href="\${it.url}" target="_blank" rel="noopener">Open product</a>
         </div>
         <div class="row" style="margin-top:10px;">

@@ -32,3 +32,17 @@ test("reads the sale price when the old price sits in the same block", () => {
   const html2 = '<div class="product-price"><span class="price--was">£40.00</span><span class="price">£16.00</span></div>';
   assert.equal(scrapeWithHeuristics(html2, "https://shop.example/x").priceValue, 16);
 });
+
+test("reads offer prices embedded as escaped JSON in a script blob", () => {
+  const blob = JSON.stringify({ offers: [6, 8, 10, 12, 14].map(() => ({ "@type": "Offer", priceCurrency: "GBP", price: "16" })) });
+  const html = "<script>self.__data.push(" + JSON.stringify(blob) + ")</script>";
+  const r = scrapeWithHeuristics(html, "https://shop.example/x");
+  assert.equal(r.priceValue, 16);
+  assert.equal(r.priceCurrency, "GBP");
+});
+
+test("embedded offers: most common price wins over a one-off related item", () => {
+  const offer = p => '{"priceCurrency":"GBP","price":"' + p + '"}';
+  const html = "<script>" + [offer(16), offer(16), offer(16), offer(40)].join(",") + "</script>";
+  assert.equal(scrapeWithHeuristics(html, "https://shop.example/x").priceValue, 16);
+});

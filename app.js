@@ -166,7 +166,14 @@ app.get("/api/debug-price", async (req, res) => {
   try {
     const r = await fetch(url, { headers: { "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36", "accept-language": "en-GB,en;q=0.9" }, redirect: "follow" });
     out.fetchStatus = r.status;
-    if (r.ok) out.fast = scrapeWithHeuristics(await r.text(), url, { debug: true });
+    if (r.ok) {
+      const html = await r.text();
+      out.fast = scrapeWithHeuristics(html, url, { debug: true });
+      // Price-like text anywhere in the raw HTML (inline scripts, data attributes) to see where a shop hides its price.
+      out.priceSnippets = [...html.matchAll(/.{0,60}(?:price|amount)["'\s]*[:=]\s*["']?[£$€]?\d[\d.,]*.{0,30}/gi)]
+        .slice(0, 25).map(m => m[0].replace(/\s+/g, " "));
+      out.htmlLength = html.length;
+    }
   } catch (e) { out.fetchError = e.message; }
   if (out.fast?.priceValue == null) {
     try { out.playwright = scrapeWithHeuristics(await renderHtmlWithPlaywright(url), url, { debug: true }); }

@@ -39,7 +39,7 @@ app.use((req, res, next) => {
   const supplied = Buffer.from(given.slice(given.indexOf(":") + 1));
   const wanted = Buffer.from(pw);
   if (supplied.length === wanted.length && crypto.timingSafeEqual(supplied, wanted)) return next();
-  res.setHeader("WWW-Authenticate", 'Basic realm="Ffis Presents"');
+  res.setHeader("WWW-Authenticate", 'Basic realm="Ffi\'s Presents"');
   res.status(401).send("Password needed");
 });
 const publicDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "public");

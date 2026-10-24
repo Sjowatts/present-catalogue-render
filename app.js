@@ -67,35 +67,7 @@ async function initDbWithRetry() {
   }
 }
 
-/* ---------- Currency conversion (to GBP) ---------- */
-// ECB rates via frankfurter.app (free, no API key). Cached for an hour.
-const rateCache = new Map();
-async function gbpRate(cur) {
-  const hit = rateCache.get(cur);
-  if (hit && Date.now() - hit.at < 3600_000) return hit.rate;
-  const res = await fetch(`https://api.frankfurter.app/latest?from=${encodeURIComponent(cur)}&to=GBP`);
-  const data = await res.json();
-  const rate = data?.rates?.GBP;
-  if (typeof rate !== "number") throw new Error("No GBP rate for " + cur);
-  rateCache.set(cur, { rate, at: Date.now() });
-  return rate;
-}
-
-async function convertToGBP(value, currency) {
-  if (value == null) return { value: null, currency: "GBP" };
-  const cur = String(currency || "").toUpperCase();
-  if (!cur || cur === "GBP") return { value, currency: "GBP" };
-  try {
-    const rate = await gbpRate(cur);
-    return { value: Math.round(value * rate * 100) / 100, currency: "GBP" };
-  } catch (e) {
-    console.error("Conversion failed:", e.message);
-  }
-  // Keep the original amount labelled with its own currency; the UI shows that currency.
-  return { value, currency: cur };
-}
-
-/* ---------- Scrape + convert ---------- */
+/* ---------- Scrape ---------- */
 async function scrapeProduct(url) {
   const host = normalizeHost(url);
   let title=null, image=null, priceValue=null, priceCurrency=null, description=null, source="heuristics";
@@ -126,15 +98,6 @@ async function scrapeProduct(url) {
     } catch {}
   }
 
-  // 💱 Convert to GBP before storing
-  if (priceValue != null) {
-    const conv = await convertToGBP(priceValue, priceCurrency || "GBP");
-    priceValue = conv.value;
-    priceCurrency = conv.currency; // "GBP"
-  } else {
-    priceCurrency = "GBP";
-  }
-
   return {
     url,
     store: host,
@@ -142,7 +105,7 @@ async function scrapeProduct(url) {
     image,
     description: description || null,
     priceValue: priceValue ?? null,
-    priceCurrency: priceCurrency ?? "GBP",
+    priceCurrency: priceValue != null ? (priceCurrency || "GBP") : null, // keep the shop's own currency
     lastChecked: new Date().toISOString(),
     source
   };
@@ -358,7 +321,7 @@ app.get("/", (_req, res) => {
         <button id="importBtn" type="button">Import</button>
         <input type="file" id="importFile" accept="application/json" style="display:none" />
       </div>
-      <div class="meta-bar"><span id="count">0</span> items • Prices converted and shown in £</div>
+      <div class="meta-bar"><span id="count">0</span> items • Prices shown in each shop's own currency</div>
     </div>
   </header>
   <main>
@@ -372,12 +335,11 @@ const elUrl = document.getElementById("url");
 const btnAdd = document.getElementById("add");
 const btnRefreshAll = document.getElementById("refreshAll");
 
-// Always display as GBP (values already converted on the server)
-function fmtPriceGBP(v, cur) {
+// Show each price in the currency the shop uses (no conversion)
+function fmtPrice(v, cur) {
   if (v == null) return "—";
-  const code = cur || "GBP";
-  try { return new Intl.NumberFormat("en-GB",{style:"currency",currency:code}).format(v) + (code === "GBP" ? "" : " (not converted)"); }
-  catch { return "£" + Number(v).toFixed(2); }
+  try { return new Intl.NumberFormat("en-GB",{style:"currency",currency:cur || "GBP"}).format(v); }
+  catch { return Number(v).toFixed(2) + (cur ? " " + cur : ""); }
 }
 function debounce(fn, ms){ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), ms); }; }
 const saveNote = debounce(async (id, text)=>{
@@ -420,7 +382,7 @@ async function load() {
         </div>
         \${desc}
         <div class="row" style="margin-top:12px;">
-          <div class="price">\${fmtPriceGBP(it.price_value ?? it.priceValue, it.price_currency ?? it.priceCurrency)}</div>
+          <div class="price">\${fmtPrice(it.price_value ?? it.priceValue, it.price_currency ?? it.priceCurrency)}</div>
           <a class="link" href="\${it.url}" target="_blank" rel="noopener">Open product</a>
         </div>
         <div class="row" style="margin-top:10px;">

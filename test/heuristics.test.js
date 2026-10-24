@@ -25,3 +25,10 @@ test("skips struck-through and 'was' prices", () => {
   const html = '<s class="price">£80.00</s><span class="price">£60.00</span>';
   assert.equal(scrapeWithHeuristics(html, "https://shop.example/x").priceValue, 60);
 });
+
+test("reads the sale price when the old price sits in the same block", () => {
+  const html = '<div class="price"><s>£40.00</s> £16.00</div>';
+  assert.equal(scrapeWithHeuristics(html, "https://shop.example/x").priceValue, 16);
+  const html2 = '<div class="product-price"><span class="price--was">£40.00</span><span class="price">£16.00</span></div>';
+  assert.equal(scrapeWithHeuristics(html2, "https://shop.example/x").priceValue, 16);
+});

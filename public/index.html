@@ -7,109 +7,15 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=DM+Sans:wght@400;500;700&display=swap">
-<style>
-  :root {
-    --bg:#121014; --surface:#1b181f; --surface-2:#26222c; --inset:#121014;
-    --border:#2e2a35; --border-strong:#3d3745;
-    --text:#f4f1f6; --text-soft:#cfc9d8; --muted:#a8a2b3;
-    --accent:#7c3aed; --link:#c4b0ff; --link-hover:#e4dbff;
-    --pill:#2a2433; --pill-border:#5b4a7d; --danger:#ffb4ab; --danger-border:#5c3a3a;
-    --display:'Bricolage Grotesque','DM Sans',system-ui,sans-serif;
-    --body:'DM Sans',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
-  }
-  * { box-sizing:border-box }
-  body { margin:0; background:var(--bg); color:var(--text); font-family:var(--body); min-height:100vh; }
-  a { color:var(--link) } a:hover { color:var(--link-hover) }
-  :focus-visible { outline:2px solid var(--link); outline-offset:2px }
-  button { font-family:var(--body); cursor:pointer }
-  button:disabled { opacity:.55; cursor:default }
-
-  .topbar { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:16px;
-    padding:24px 48px; border-bottom:1px solid var(--border); }
-  .brand { display:flex; align-items:center; gap:14px }
-  .brand svg { flex:none }
-  h1 { margin:0; font:700 32px var(--display); letter-spacing:-.02em }
-  .topbar-actions { display:flex; gap:10px }
-
-  main { width:100%; max-width:1240px; margin:0 auto; padding:40px 48px 64px; display:flex; flex-direction:column; gap:32px }
-
-  .btn { min-height:44px; padding:0 20px; border-radius:12px; border:1px solid var(--border-strong);
-    background:transparent; color:var(--text); font-size:15px; font-weight:500 }
-  .btn:hover:not(:disabled) { background:var(--surface) }
-  .btn-primary { min-height:56px; padding:0 32px; border:0; border-radius:14px; background:var(--accent); color:#fff; font-size:16px; font-weight:700 }
-  .btn-primary:hover:not(:disabled) { background:#6d28d9 }
-  .btn-secondary { min-height:56px; padding:0 24px; border-radius:14px; font-size:16px }
-  .btn-small { min-height:44px; padding:0 16px; border-radius:10px; font-size:14px }
-  .btn-danger { color:var(--danger); border-color:var(--danger-border) }
-  .btn-danger:hover:not(:disabled) { background:#2a1c1e }
-
-  .eyebrow { font-size:13px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--muted) }
-  .add { display:flex; flex-direction:column; gap:14px }
-  .add-row { display:flex; flex-wrap:wrap; gap:12px }
-  .field { flex:1 1 420px; min-width:0; display:flex; align-items:center; gap:12px; min-height:56px; padding:0 18px;
-    background:var(--surface); border:1px solid var(--border-strong); border-radius:14px }
-  .field:focus-within { border-color:var(--link) }
-  .field input { flex:1; min-width:0; background:transparent; border:0; outline:none; color:var(--text); font:400 16px var(--body) }
-  .field input::placeholder { color:var(--muted) }
-
-  .status { min-height:20px; margin:0; font-size:14px; color:var(--muted) }
-  .status.error { color:var(--danger) }
-
-  .toolbar { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:16px }
-  .tabs { display:flex; gap:8px; overflow-x:auto }
-  .tab { flex:none; min-height:44px; padding:0 18px; border-radius:999px; border:1px solid var(--border-strong);
-    background:transparent; color:var(--text-soft); font-size:15px; font-weight:500 }
-  .tab[aria-pressed="true"] { background:var(--pill); border-color:var(--pill-border); color:var(--text); font-weight:700 }
-  .tab .n { color:var(--muted); font-weight:500; margin-left:6px }
-  .note-line { margin:0; font-size:14px; color:var(--muted) }
-
-  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:24px; align-items:start }
-  .card { display:flex; flex-direction:column; background:var(--surface); border:1px solid var(--border); border-radius:20px; overflow:hidden }
-  .thumb { height:300px; background:var(--surface-2); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; color:var(--muted); font-size:13px }
-  .thumb img { width:100%; height:100%; object-fit:contain; background:#fff }
-  .body { padding:20px; display:flex; flex-direction:column; gap:14px }
-  .badge { align-self:flex-start; padding:4px 10px; background:var(--pill); border-radius:999px; font-size:13px; color:var(--text-soft) }
-  .title { margin:0; font:700 20px/1.25 var(--display); letter-spacing:-.01em }
-  .card.is-bought .title { text-decoration:line-through; color:var(--muted) }
-  .desc { margin:0; font-size:14px; line-height:1.5; color:var(--muted) }
-  .meta { display:flex; flex-direction:column; gap:8px }
-  .price-row { display:flex; align-items:baseline; justify-content:space-between; gap:12px }
-  .price { font:700 28px var(--display) }
-  .price-row a { display:inline-flex; align-items:center; min-height:44px; font-size:15px; font-weight:500 }
-  .rule { height:1px; background:var(--border) }
-  .actions { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px }
-  .check { display:inline-flex; align-items:center; gap:10px; min-height:44px; font-size:15px; cursor:pointer }
-  .check input { width:22px; height:22px; margin:0; accent-color:var(--accent) }
-  .btn-group { display:flex; gap:8px }
-  .notes { display:flex; flex-direction:column; gap:8px }
-  .notes textarea { width:100%; min-height:72px; resize:vertical; padding:12px 14px; background:var(--inset); color:var(--text);
-    border:1px solid var(--border-strong); border-radius:12px; font:400 15px var(--body) }
-  .saved { min-height:16px; font-size:12px; color:#5eead4 }
-
-  .add-tile { min-height:300px; padding:32px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px;
-    text-align:center; border:2px dashed var(--border-strong); border-radius:20px; color:var(--muted) }
-  .add-tile p { margin:0; font-size:16px; line-height:1.5; max-width:220px }
-
-  @media (max-width:720px) {
-    .topbar { padding:20px 16px }
-    h1 { font-size:24px }
-    .brand svg { width:28px; height:28px }
-    main { padding:24px 16px 40px; gap:20px }
-    .btn-primary, .btn-secondary { flex:1 1 0; min-height:52px }
-    .field { min-height:52px; padding:0 14px; flex-basis:100% }
-    .thumb { height:260px }
-    .body { padding:16px }
-    .price { font-size:26px }
-    .btn-group { width:100%; }
-    .btn-group .btn { flex:1 }
-    .notes textarea { font-size:16px }
-  }
-</style>
+<link rel="stylesheet" href="/style.css">
 </head>
 <body>
+  <div class="ribbon" aria-hidden="true"></div>
   <header class="topbar">
     <div class="brand">
-      <svg aria-hidden="true" width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#c4b0ff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="5" rx="1"/><path d="M12 8v13M5 13v7a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-7"/><path d="M12 8C10.5 4 6 4 6 6.5S9 8 12 8Zm0 0c1.5-4 6-4 6-1.5S15 8 12 8Z"/></svg>
+      <span class="brand-icon" aria-hidden="true">
+        <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="5" rx="1"/><path d="M12 8v13M5 13v7a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-7"/><path d="M12 8C10.5 4 6 4 6 6.5S9 8 12 8Zm0 0c1.5-4 6-4 6-1.5S15 8 12 8Z"/></svg>
+      </span>
       <h1>Ffis Presents</h1>
     </div>
     <div class="topbar-actions">
@@ -120,209 +26,75 @@
   </header>
 
   <main>
+    <nav class="lists" id="lists" aria-label="Lists"></nav>
+
     <section class="add">
-      <label for="url" class="eyebrow">Add a present</label>
+      <label for="url" class="eyebrow" id="addLabel">Add a present</label>
       <div class="add-row">
         <div class="field">
-          <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#a8a2b3" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3A4 4 0 0 0 11 18.7l1-1"/></svg>
+          <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#b9acd6" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3A4 4 0 0 0 11 18.7l1-1"/></svg>
           <input type="url" id="url" placeholder="Paste a product link" autocomplete="off">
         </div>
         <button type="button" class="btn-primary" id="add">Add</button>
-        <button type="button" class="btn btn-secondary" id="refreshAll">Refresh all</button>
+        <button type="button" class="btn btn-secondary" id="refreshAll">Refresh prices</button>
       </div>
       <p class="status" id="status" role="status" aria-live="polite"></p>
     </section>
+
+    <section id="panel" hidden></section>
 
     <section class="toolbar">
       <div class="tabs" role="group" aria-label="Filter presents">
         <button type="button" class="tab" data-filter="all" aria-pressed="true">All <span class="n" id="n-all">0</span></button>
         <button type="button" class="tab" data-filter="todo" aria-pressed="false">Still to buy <span class="n" id="n-todo">0</span></button>
         <button type="button" class="tab" data-filter="bought" aria-pressed="false">Bought <span class="n" id="n-bought">0</span></button>
+        <button type="button" class="tab" data-filter="fav" aria-pressed="false">Favourites <span class="n" id="n-fav">0</span></button>
+        <button type="button" class="tab" data-filter="drop" aria-pressed="false">Price drops <span class="n" id="n-drop">0</span></button>
       </div>
-      <p class="note-line">Prices shown in each shop's own currency</p>
+      <div class="tools">
+        <label for="search" class="sr-only">Search presents</label>
+        <input type="search" id="search" class="search" placeholder="Search presents">
+        <label for="sort" class="sr-only">Sort presents</label>
+        <select id="sort" class="select">
+          <option value="new">Newest first</option>
+          <option value="old">Oldest first</option>
+          <option value="low">Price: low to high</option>
+          <option value="high">Price: high to low</option>
+          <option value="drop">Biggest price drop</option>
+          <option value="az">Name A to Z</option>
+        </select>
+      </div>
     </section>
 
     <section id="list" class="grid"></section>
   </main>
 
-<script>
-const $ = (id) => document.getElementById(id);
-const elList = $("list"), elUrl = $("url"), elStatus = $("status");
-let items = [];
-let filter = "all";
-
-const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
-const safeUrl = (u) => { try { const x = new URL(u); return /^https?:$/.test(x.protocol) ? x.href : ""; } catch { return ""; } };
-const hostOf = (u) => { try { return new URL(u).hostname.replace(/^www\./, ""); } catch { return ""; } };
-
-function fmtPrice(v, cur) {
-  if (v == null) return "—";
-  try { return new Intl.NumberFormat("en-GB", { style:"currency", currency: cur || "GBP" }).format(v); }
-  catch { return Number(v).toFixed(2) + (cur ? " " + cur : ""); }
-}
-
-function say(msg, isError) {
-  elStatus.textContent = msg || "";
-  elStatus.classList.toggle("error", !!isError);
-}
-
-async function api(path, opts) {
-  const res = await fetch(path, opts);
-  let data = null;
-  try { data = await res.json(); } catch {}
-  if (!res.ok) throw new Error((data && data.error) || "Something went wrong (" + res.status + ")");
-  return data;
-}
-
-const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
-const saveNote = debounce(async (id, text) => {
-  try {
-    await api("/api/items/" + id + "/notes", { method:"POST", headers:{ "content-type":"application/json" }, body: JSON.stringify({ notes: text }) });
-    const s = $("saved-" + id);
-    if (s) { s.textContent = "Saved"; setTimeout(() => { s.textContent = ""; }, 1200); }
-  } catch (e) { say(e.message, true); }
-}, 600);
-
-const IMG_PLACEHOLDER = '<svg aria-hidden="true" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="m21 16-5-5-9 9"/></svg><span>No image</span>';
-
-function cardHtml(it) {
-  const img = safeUrl(it.image);
-  const href = safeUrl(it.url);
-  const price = fmtPrice(it.price_value, it.price_currency);
-  return `
-    <div class="thumb">${img ? '<img src="' + esc(img) + '" alt="">' : IMG_PLACEHOLDER}</div>
-    <div class="body">
-      <div class="meta">
-        <span class="badge">${esc(hostOf(it.url))}</span>
-        <h2 class="title">${esc(it.title || "(No title)")}</h2>
-        ${it.description ? '<p class="desc">' + esc(it.description) + '</p>' : ""}
+  <dialog id="listDialog" aria-labelledby="listDialogTitle">
+    <form method="dialog" class="dlg" id="listForm">
+      <h2 id="listDialogTitle">New list</h2>
+      <label>Name <input id="listName" required maxlength="60" placeholder="e.g. Mum, Christmas, Birthdays"></label>
+      <div class="row">
+        <label>Budget (optional) <input id="listBudget" type="number" min="0" step="0.01" inputmode="decimal" placeholder="100"></label>
+        <label>Currency
+          <select id="listCurrency"><option>GBP</option><option>USD</option><option>EUR</option></select>
+        </label>
       </div>
-      <div class="price-row">
-        <span class="price">${esc(price)}</span>
-        ${href ? '<a href="' + esc(href) + '" target="_blank" rel="noopener">Open product</a>' : ""}
+      <div class="dlg-actions">
+        <button type="button" class="btn" id="listCancel">Cancel</button>
+        <button type="submit" class="btn btn-violet">Save</button>
       </div>
-      <div class="rule"></div>
-      <div class="actions">
-        <label class="check"><input type="checkbox" class="toggleBought" data-id="${esc(it.id)}" ${it.bought ? "checked" : ""}> Already bought</label>
-        <div class="btn-group">
-          <button type="button" class="btn btn-small refresh" data-id="${esc(it.id)}">Refresh</button>
-          <button type="button" class="btn btn-small btn-danger delete" data-id="${esc(it.id)}">Remove</button>
-        </div>
-      </div>
-      <div class="notes">
-        <label for="notes-${esc(it.id)}" class="eyebrow" style="font-size:12px">Notes</label>
-        <textarea id="notes-${esc(it.id)}" class="noteBox" data-id="${esc(it.id)}" placeholder="Size, colour, delivery notes">${esc(it.notes || "")}</textarea>
-        <div class="saved" id="saved-${esc(it.id)}" role="status"></div>
-      </div>
-    </div>`;
-}
+    </form>
+  </dialog>
 
-function render() {
-  const bought = items.filter((i) => i.bought).length;
-  $("n-all").textContent = items.length;
-  $("n-bought").textContent = bought;
-  $("n-todo").textContent = items.length - bought;
-  document.querySelectorAll(".tab").forEach((t) => t.setAttribute("aria-pressed", String(t.dataset.filter === filter)));
+  <dialog id="shareDialog" aria-labelledby="shareTitle">
+    <div class="dlg">
+      <h2 id="shareTitle">Share this list</h2>
+      <div id="shareBody"></div>
+      <div class="dlg-actions"><button type="button" class="btn" id="shareClose">Close</button></div>
+    </div>
+  </dialog>
 
-  const shown = items.filter((i) => filter === "all" || (filter === "bought" ? i.bought : !i.bought));
-  elList.innerHTML = "";
-  for (const it of shown) {
-    const card = document.createElement("article");
-    card.className = "card" + (it.bought ? " is-bought" : "");
-    card.innerHTML = cardHtml(it);
-    elList.appendChild(card);
-  }
-  if (filter === "all" || !shown.length) {
-    const tile = document.createElement("div");
-    tile.className = "add-tile";
-    tile.innerHTML = '<svg aria-hidden="true" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg><p>' +
-      (items.length ? "Paste a link above to add the next present" : (filter === "all" ? "No presents yet. Paste a link above to add the first one" : "Nothing here yet")) + "</p>";
-    elList.appendChild(tile);
-  }
-}
-
-async function load() {
-  try {
-    items = await api("/api/items");
-    render();
-  } catch (e) { say(e.message, true); }
-}
-
-elList.addEventListener("change", async (e) => {
-  const cb = e.target.closest(".toggleBought");
-  if (!cb) return;
-  try {
-    await api("/api/items/" + cb.dataset.id + "/bought", { method:"POST", headers:{ "content-type":"application/json" }, body: JSON.stringify({ bought: cb.checked }) });
-    await load();
-  } catch (err) { say(err.message, true); cb.checked = !cb.checked; }
-});
-
-elList.addEventListener("click", async (e) => {
-  const del = e.target.closest(".delete");
-  const ref = e.target.closest(".refresh");
-  try {
-    if (del) {
-      await api("/api/items/" + del.dataset.id, { method:"DELETE" });
-      await load();
-    } else if (ref) {
-      ref.disabled = true; ref.textContent = "Refreshing…";
-      await api("/api/refresh/" + ref.dataset.id, { method:"POST" });
-      await load();
-    }
-  } catch (err) { say(err.message, true); await load(); }
-});
-
-elList.addEventListener("input", (e) => {
-  const ta = e.target.closest(".noteBox");
-  if (ta) saveNote(ta.dataset.id, ta.value);
-});
-
-document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => { filter = t.dataset.filter; render(); }));
-
-async function addItem() {
-  const url = elUrl.value.trim();
-  if (!url) return;
-  const btn = $("add");
-  btn.disabled = true; btn.textContent = "Adding…"; say("Looking up the product. This can take a few seconds.");
-  try {
-    await api("/api/add", { method:"POST", headers:{ "content-type":"application/json" }, body: JSON.stringify({ url }) });
-    elUrl.value = "";
-    say("");
-    await load();
-  } catch (e) { say(e.message, true); }
-  btn.disabled = false; btn.textContent = "Add";
-}
-$("add").onclick = addItem;
-elUrl.addEventListener("keydown", (e) => { if (e.key === "Enter") addItem(); });
-
-$("refreshAll").onclick = async () => {
-  const btn = $("refreshAll");
-  btn.disabled = true;
-  let done = 0, failed = 0;
-  for (const it of items) {
-    say("Refreshing " + (done + 1) + " of " + items.length + "…");
-    try { await api("/api/refresh/" + it.id, { method:"POST" }); } catch { failed++; }
-    done++;
-  }
-  say(failed ? failed + " of " + items.length + " could not be refreshed." : "", !!failed);
-  btn.disabled = false;
-  await load();
-};
-
-$("importBtn").onclick = () => $("importFile").click();
-$("importFile").onchange = async (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
-  try {
-    const parsed = JSON.parse(await file.text());
-    const out = await api("/api/import", { method:"POST", headers:{ "content-type":"application/json" }, body: JSON.stringify(parsed) });
-    say("Imported " + out.added + " new " + (out.added === 1 ? "item" : "items") + ".");
-  } catch (err) { say(err instanceof SyntaxError ? "That file isn't a valid export." : err.message, true); }
-  e.target.value = "";
-  await load();
-};
-
-load();
-</script>
+  <canvas id="confetti" aria-hidden="true"></canvas>
+  <script src="/main.js"></script>
 </body>
 </html>

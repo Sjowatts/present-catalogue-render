@@ -62,7 +62,7 @@ async function load() {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || "This link isn't working");
     $("listName").textContent = data.list.name;
-    document.title = data.list.name + " · Ffis Presents";
+    document.title = data.list.name + " · Ffi's Presents";
     $("intro").textContent = "Pick something to get, and tick “I’ll get this” so nobody buys the same present twice.";
     $("whoami").hidden = false;
     items = data.items;

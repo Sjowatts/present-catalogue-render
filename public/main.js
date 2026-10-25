@@ -38,7 +38,7 @@ async function api(path, opts) {
   const res = await fetch(path, opts);
   let data = null;
   try { data = await res.json(); } catch {}
-  if (!res.ok) throw new Error((data && data.error) || "Something went wrong (" + res.status + ")");
+  if (!res.ok) throw Object.assign(new Error((data && data.error) || "Something went wrong (" + res.status + ")"), { status: res.status, data });
   return data;
 }
 const send = (path, body, method = "POST") => api(path, { method, headers:{ "content-type":"application/json" }, body: JSON.stringify(body ?? {}) });
@@ -135,7 +135,7 @@ function cardHtml(it) {
   const claim = it.claimed_by ? '<span class="pill claim">' + esc(it.claimed_by) + ' is getting it <button type="button" class="clear-claim" data-id="' + esc(it.id) + '" aria-label="Clear who is getting this">×</button></span>' : "";
   const moveOptions = '<option value="">No list</option>' + lists.map((l) => '<option value="' + esc(l.id) + '"' + (l.id === it.list_id ? " selected" : "") + ">" + esc(l.name) + "</option>").join("");
   return '<div class="thumb">' + (img ? '<img src="' + esc(img) + '" alt="" loading="lazy">' : IMG_PLACEHOLDER) +
-    '<span class="badge">' + esc(hostOf(it.url)) + "</span>" +
+    '<span class="badge">' + esc(hostOf(it.url) || "Added by hand") + "</span>" +
     '<button type="button" class="fav" data-id="' + esc(it.id) + '" aria-pressed="' + !!it.favourite + '" aria-label="Favourite">' + STAR + "</button>" +
     '<span class="pricepill' + (price == null ? " none" : "") + '">' + esc(money(price, cur)) + "</span></div>" +
     '<div class="body"><h2 class="title">' + esc(it.title || "(No title)") + "</h2>" +
@@ -143,10 +143,11 @@ function cardHtml(it) {
     origNote(it) +
     '<div class="trend">' + sparkSvg(pts, change != null && change < 0 ? "#2ee6a8" : "#ffd23f") + pill + claim + "</div>" +
     '<div class="linkrow">' + (href ? '<a href="' + esc(href) + '" target="_blank" rel="noopener">Open product</a>' : "") +
-    '<span class="checked">Checked ' + esc(ago(it.last_checked)) + "</span></div>" +
+    '<span class="checked">' + (it.price_locked ? "Price set by you" : it.url ? "Checked " + esc(ago(it.last_checked)) : "") + "</span></div>" +
     '<div class="rule"></div>' +
     '<div class="actions"><label class="check"><input type="checkbox" class="toggleBought" data-id="' + esc(it.id) + '"' + (it.bought ? " checked" : "") + "> Already bought</label>" +
-    '<div class="btn-group"><button type="button" class="btn btn-small refresh" data-id="' + esc(it.id) + '">Refresh</button>' +
+    '<div class="btn-group"><button type="button" class="btn btn-small edit" data-id="' + esc(it.id) + '">Edit</button>' +
+    (it.url ? '<button type="button" class="btn btn-small refresh" data-id="' + esc(it.id) + '">Refresh</button>' : "") +
     '<button type="button" class="btn btn-small btn-danger delete" data-id="' + esc(it.id) + '">Remove</button></div></div>' +
     '<div class="movewrap"><label for="move-' + esc(it.id) + '" class="eyebrow" style="font-size:12px">List</label><select id="move-' + esc(it.id) + '" class="select move" data-id="' + esc(it.id) + '">' + moveOptions + "</select></div>" +
     '<div class="notes"><label for="notes-' + esc(it.id) + '" class="eyebrow" style="font-size:12px">Notes</label>' +
@@ -272,7 +273,8 @@ grid.addEventListener("change", async (e) => {
   } catch (err) { say(err.message, true); await load(); }
 });
 grid.addEventListener("click", async (e) => {
-  const del = e.target.closest(".delete"), ref = e.target.closest(".refresh"), fav = e.target.closest(".fav"), clr = e.target.closest(".clear-claim");
+  const del = e.target.closest(".delete"), ref = e.target.closest(".refresh"), fav = e.target.closest(".fav"), clr = e.target.closest(".clear-claim"), edit = e.target.closest(".edit");
+  if (edit) { const it = items.find((x) => x.id === edit.dataset.id); if (it) openItemDialog(it); return; }
   try {
     if (del) {
       if (!confirm("Remove this present?")) return;
@@ -369,19 +371,38 @@ $("shareBody").addEventListener("click", async (e) => {
 });
 
 /* ---------- add, refresh, import ---------- */
-async function addItem() {
-  const url = $("url").value.trim();
+function sayDuplicate(err, url) {
+  const st = $("status");
+  st.classList.remove("error");
+  st.textContent = err.message + ". ";
+  const show = document.createElement("button");
+  show.type = "button"; show.className = "linkbtn"; show.textContent = "Show it";
+  show.onclick = () => {
+    const dup = err.data && err.data.duplicate;
+    prefs.list = "all"; prefs.filter = "all"; prefs.q = (dup && dup.title) || ""; $("search").value = prefs.q; savePrefs(); render();
+    say("");
+  };
+  const again = document.createElement("button");
+  again.type = "button"; again.className = "linkbtn"; again.textContent = "Add anyway";
+  again.onclick = () => addItem({ force: true, url });
+  st.append(show, again);
+}
+
+async function addItem(opts = {}) {
+  const url = (opts.url || $("url").value).trim();
   if (!url) return;
   const btn = $("add");
   btn.disabled = true; btn.textContent = "Adding…"; say("Looking up the product. This can take a few seconds.");
   try {
-    await send("/api/add", { url, list_id: prefs.list === "all" ? null : prefs.list });
+    await send("/api/add", { url, force: !!opts.force, list_id: prefs.list === "all" ? null : prefs.list });
     $("url").value = ""; say("");
     await load();
-  } catch (e) { say(e.message, true); }
+  } catch (e) {
+    if (e.status === 409) sayDuplicate(e, url); else say(e.message, true);
+  }
   btn.disabled = false; btn.textContent = "Add";
 }
-$("add").onclick = addItem;
+$("add").onclick = () => addItem();
 $("url").addEventListener("keydown", (e) => { if (e.key === "Enter") addItem(); });
 
 $("refreshAll").onclick = async () => {
@@ -407,5 +428,122 @@ $("importFile").onchange = async (e) => {
   e.target.value = ""; await load();
 };
 
+/* ---------- add by hand / edit ---------- */
+let editing = null; // the present being edited, or null when adding a new one
+let startPrice = "";
+function openItemDialog(it) {
+  editing = it || null;
+  $("itemDialogTitle").textContent = it ? "Edit present" : "Add by hand";
+  $("fTitle").value = it ? it.title || "" : "";
+  $("fUrl").value = it ? it.url || "" : "";
+  startPrice = it && it.price_value != null ? String(Number(it.price_value)) : "";
+  $("fPrice").value = startPrice;
+  $("fCurrency").value = "GBP";
+  $("fImage").value = it ? it.image || "" : "";
+  $("fDesc").value = it ? it.description || "" : "";
+  $("fPriceLock").checked = it ? !!it.price_locked : true;
+  $("fDetailsLock").checked = it ? !!it.details_locked : true;
+  $("lockBox").hidden = !it;
+  $("itemError").textContent = "";
+  $("itemDialog").showModal();
+  $("fTitle").focus();
+}
+$("addByHand").onclick = () => openItemDialog(null);
+$("itemCancel").onclick = () => $("itemDialog").close();
+$("fPrice").addEventListener("input", () => { if (editing) $("fPriceLock").checked = true; });
+$("fCurrency").addEventListener("change", () => { if (editing) $("fPriceLock").checked = true; });
+$("fTitle").addEventListener("input", () => { if (editing) $("fDetailsLock").checked = true; });
+$("fImage").addEventListener("input", () => { if (editing) $("fDetailsLock").checked = true; });
+$("fDesc").addEventListener("input", () => { if (editing) $("fDetailsLock").checked = true; });
+
+$("itemForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const save = $("itemSave"); save.disabled = true;
+  $("itemError").textContent = "";
+  const price = $("fPrice").value;
+  try {
+    if (editing) {
+      const body = { title: $("fTitle").value, url: $("fUrl").value, image: $("fImage").value, description: $("fDesc").value,
+        price_locked: $("fPriceLock").checked, details_locked: $("fDetailsLock").checked };
+      if (price !== startPrice || $("fCurrency").value !== "GBP") { body.price = price; body.currency = $("fCurrency").value; }
+      await send("/api/items/" + editing.id + "/edit", body);
+    } else {
+      await send("/api/items/manual", { title: $("fTitle").value, url: $("fUrl").value, price, currency: $("fCurrency").value,
+        image: $("fImage").value, description: $("fDesc").value, list_id: prefs.list === "all" ? null : prefs.list });
+    }
+    $("itemDialog").close();
+    await load();
+  } catch (err) {
+    if (err.status === 409 && !editing) {
+      $("itemError").textContent = err.message + ". Clear the link to add it without one.";
+    } else $("itemError").textContent = err.message;
+  }
+  save.disabled = false;
+});
+
+/* ---------- add from phone ---------- */
+function openPhoneDialog() {
+  const base = location.origin + "/?add=";
+  $("phoneLink").value = base;
+  $("bookmarklet").href = "javascript:(function(){location.href=" + JSON.stringify(base) + "+encodeURIComponent(location.href)})()";
+  $("phoneDialog").showModal();
+}
+$("phoneBtn").onclick = openPhoneDialog;
+$("phoneClose").onclick = () => $("phoneDialog").close();
+$("bookmarklet").addEventListener("click", (e) => e.preventDefault());
+$("phoneCopy").onclick = async (e) => {
+  try { await navigator.clipboard.writeText($("phoneLink").value); e.target.textContent = "Copied"; }
+  catch { $("phoneLink").select(); e.target.textContent = "Press Cmd+C"; }
+};
+
+// Opened from a share or the shortcut/bookmarklet: /?add=<link> or /?url=<link>&text=...
+function takeSharedLink() {
+  const q = new URLSearchParams(location.search);
+  if (!["add", "url", "text", "title"].some((k) => q.has(k))) return null;
+  const grab = (v) => (v || "").match(/https?:\/\/[^\s<>"']+/i);
+  let found = null;
+  // /?add= takes everything after it, so a link pasted without encoding (with its own & and ?) stays whole.
+  const raw = location.search.match(/[?&]add=(.*)$/);
+  if (raw) { let v = raw[1]; try { v = decodeURIComponent(v); } catch {} found = grab(v); }
+  if (!found) found = [q.get("url"), q.get("text"), q.get("title")].map(grab).find(Boolean);
+  history.replaceState(null, "", location.pathname);
+  return found ? found[0] : null;
+}
+
+/* ---------- price alerts ---------- */
+const randomTopic = () => Array.from(crypto.getRandomValues(new Uint8Array(20)), (b) => "abcdefghijklmnopqrstuvwxyz0123456789"[b % 36]).join("");
+async function openAlertsDialog() {
+  $("alertsBody").innerHTML = "<p>Checking…</p>";
+  $("alertsDialog").showModal();
+  let enabled = false;
+  try { enabled = (await api("/api/alerts/status")).enabled; } catch {}
+  if (enabled) {
+    $("alertsBody").innerHTML = "<p><b>Alerts are on.</b> You'll get a notification on your phone when a price falls by 2% or more.</p>" +
+      '<p>Prices are only checked when you press <b>Refresh prices</b>, unless the daily automatic check is set up.</p>' +
+      '<div class="dlg-actions"><button type="button" class="btn btn-violet" id="alertTest">Send a test alert</button></div><p class="status" id="alertMsg" role="status"></p>';
+    $("alertTest").onclick = async () => {
+      $("alertMsg").classList.remove("error"); $("alertMsg").textContent = "Sending…";
+      try { await send("/api/alerts/test", {}); $("alertMsg").textContent = "Sent. Check your phone."; }
+      catch (e) { $("alertMsg").classList.add("error"); $("alertMsg").textContent = e.message; }
+    };
+  } else {
+    const topic = randomTopic();
+    $("alertsBody").innerHTML = "<p>Get a notification on your phone when a price drops. It's free and needs no account.</p><ol>" +
+      "<li>Install the free <b>ntfy</b> app on your phone and subscribe to this secret topic name: <div class=\"copyrow\" style=\"margin-top:8px\"><input id=\"topicBox\" readonly value=\"" + esc(topic) + "\" aria-label=\"Secret topic name\"><button type=\"button\" class=\"btn btn-violet\" id=\"topicCopy\">Copy</button></div></li>" +
+      "<li>In Render, open this service, then <b>Environment</b>, and add a variable named <code>NTFY_TOPIC</code> with that same value. Save and let it redeploy.</li>" +
+      "<li>Come back here and press <b>Price alerts</b> again to send a test.</li></ol>" +
+      "<p>Keep the topic name private: anyone who knows it can read your alerts. To check prices every day on their own, the daily price check also needs to be switched on.</p>";
+    $("topicCopy").onclick = async (e) => {
+      try { await navigator.clipboard.writeText($("topicBox").value); e.target.textContent = "Copied"; }
+      catch { $("topicBox").select(); e.target.textContent = "Press Cmd+C"; }
+    };
+  }
+}
+$("alertsBtn").onclick = openAlertsDialog;
+$("alertsClose").onclick = () => $("alertsDialog").close();
+
+/* ---------- start ---------- */
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
 $("search").value = "";
-load();
+const sharedLink = takeSharedLink();
+load().then(() => { if (sharedLink) addItem({ url: sharedLink }); });

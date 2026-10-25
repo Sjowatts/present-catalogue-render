@@ -6,7 +6,9 @@ import dotenv from "dotenv";
 dotenv.config();
 
 import fetch from "node-fetch";
-import { scrapeWithHeuristics } from "./lib/heuristics.js";
+import { scrapeWithHeuristics, parsePriceString } from "./lib/heuristics.js";
+import { extractUrl, cleanUrl, urlKey } from "./lib/links.js";
+import { alertsEnabled, sendAlert, priceDropped, dropMessage } from "./lib/alerts.js";
 import { renderHtmlWithPlaywright } from "./lib/renderers/playwright.js";
 import { BROWSER_HEADERS, looksLikeShopify, withCountryGB } from "./lib/storefront.js";
 
@@ -32,7 +34,7 @@ app.use(express.urlencoded({ extended: true }));
 
 // Optional password for the whole app: set APP_PASSWORD on the server.
 // Shared-list pages, the health check and the scheduled refresh stay reachable.
-const OPEN_PATHS = /^\/(healthz|s\/[a-f0-9]{32}|api\/share\/[a-f0-9]{32}(\/claim)?|api\/refresh-all|style\.css|shared\.js|favicon\.svg)$/;
+const OPEN_PATHS = /^\/(healthz|s\/[a-f0-9]{32}|api\/share\/[a-f0-9]{32}(\/claim)?|api\/refresh-all|style\.css|shared\.js|favicon\.svg|manifest\.webmanifest|sw\.js|icon-192\.png|icon-512\.png|apple-touch-icon\.png)$/;
 app.use((req, res, next) => {
   const pw = process.env.APP_PASSWORD;
   if (!pw || OPEN_PATHS.test(req.path)) return next();
@@ -77,6 +79,8 @@ async function initDb() {
   await pool.query(`ALTER TABLE items ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT now();`);
   await pool.query(`ALTER TABLE items ADD COLUMN IF NOT EXISTS orig_value NUMERIC;`);
   await pool.query(`ALTER TABLE items ADD COLUMN IF NOT EXISTS orig_currency TEXT;`);
+  await pool.query(`ALTER TABLE items ADD COLUMN IF NOT EXISTS price_locked BOOLEAN DEFAULT FALSE;`);
+  await pool.query(`ALTER TABLE items ADD COLUMN IF NOT EXISTS details_locked BOOLEAN DEFAULT FALSE;`);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS lists (
       id TEXT PRIMARY KEY,
@@ -325,15 +329,15 @@ app.post("/api/import", express.json({ limit: "20mb" }), async (req, res) => {
     if (!it?.url) continue;
     const id = it.id || newId();
     const r = await pool.query(
-      `INSERT INTO items (id,url,store,title,image,description,price_value,price_currency,last_checked,source,bought,notes,list_id,favourite,claimed_by,created_at,orig_value,orig_currency)
+      `INSERT INTO items (id,url,store,title,image,description,price_value,price_currency,last_checked,source,bought,notes,list_id,favourite,claimed_by,created_at,orig_value,orig_currency,price_locked,details_locked)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,
-               (SELECT id FROM lists WHERE id=$13),$14,$15,$16,$17,$18)
+               (SELECT id FROM lists WHERE id=$13),$14,$15,$16,$17,$18,$19,$20)
        ON CONFLICT (id) DO NOTHING`,
       [id, it.url, it.store ?? null, it.title ?? null, it.image ?? null, it.description ?? null,
        it.price_value ?? null, it.price_currency ?? "GBP", it.last_checked ?? new Date().toISOString(),
        it.source ?? "import", !!it.bought, it.notes ?? null,
        it.list_id ?? null, !!it.favourite, it.claimed_by ?? null, it.created_at ?? new Date().toISOString(),
-       it.orig_value ?? null, it.orig_currency ?? null]
+       it.orig_value ?? null, it.orig_currency ?? null, !!it.price_locked, !!it.details_locked]
     );
     if (r.rowCount) {
       added += 1;
@@ -411,10 +415,37 @@ app.get("/api/items", async (_req, res) => {
   res.json(rows);
 });
 
+// Is this link already on the list? Compared after tidying (www., tracking junk, trailing slash).
+async function findDuplicate(url) {
+  const key = urlKey(url);
+  if (!key) return null;
+  const { rows } = await pool.query(`SELECT id, title, url, list_id FROM items WHERE url <> ''`);
+  return rows.find((r) => urlKey(r.url) === key) || null;
+}
+const duplicateReply = (res, dup) =>
+  res.status(409).json({ error: "That present is already on your list", duplicate: { id: dup.id, title: dup.title, list_id: dup.list_id } });
+
+const httpUrlOrNull = (v) => {
+  try { const u = new URL(String(v)); return /^https?:$/.test(u.protocol) ? u.href : null; } catch { return null; }
+};
+// undefined = invalid, null = empty, number = price
+const parsePrice = (v) => {
+  if (v === null || v === undefined || String(v).trim() === "") return null;
+  const n = typeof v === "number" ? v : parsePriceString(String(v)).value;
+  return Number.isFinite(n) && n >= 0 ? n : undefined;
+};
+
 app.post("/api/add", async (req, res) => {
-  const { url } = req.body || {};
-  if (!url) return res.status(400).json({ error: "Missing url" });
+  const pasted = String(req.body?.url ?? "").trim();
+  if (!pasted) return res.status(400).json({ error: "Missing url" });
+  const found = extractUrl(pasted);
+  if (!found) return res.status(400).json({ error: "That doesn't look like a link" });
+  const url = cleanUrl(found);
   try {
+    if (!req.body?.force) {
+      const dup = await findDuplicate(url);
+      if (dup) return duplicateReply(res, dup);
+    }
     const data = await scrapeProduct(url);
     const id = newId();
     await pool.query(
@@ -430,25 +461,114 @@ app.post("/api/add", async (req, res) => {
   }
 });
 
+// A present added by hand: no link needed. Its details and price are protected from automatic changes.
+app.post("/api/items/manual", async (req, res) => {
+  const b = req.body || {};
+  const title = cleanText(b.title, 200);
+  if (!title) return res.status(400).json({ error: "Give the present a name" });
+  let url = "";
+  if (String(b.url ?? "").trim()) {
+    const found = extractUrl(b.url);
+    if (!found) return res.status(400).json({ error: "That link doesn't look right" });
+    url = cleanUrl(found);
+    if (!b.force) { const dup = await findDuplicate(url); if (dup) return duplicateReply(res, dup); }
+  }
+  const price = parsePrice(b.price);
+  if (price === undefined) return res.status(400).json({ error: "Price must be a number" });
+  let image = null;
+  if (String(b.image ?? "").trim()) {
+    image = httpUrlOrNull(String(b.image).trim());
+    if (!image) return res.status(400).json({ error: "The image link doesn't look right" });
+  }
+  const conv = await toGBP(price, b.currency);
+  const id = newId();
+  await pool.query(
+    `INSERT INTO items (id,url,store,title,image,description,price_value,price_currency,last_checked,source,bought,notes,list_id,orig_value,orig_currency,price_locked,details_locked)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,now(),'manual',false,null,(SELECT id FROM lists WHERE id=$9),$10,$11,$12,true)`,
+    [id, url, url ? normalizeHost(url) : null, title, image, cleanText(b.description, 500) || null,
+     conv.value, conv.currency, b.list_id ?? null, conv.orig ? conv.orig.value : null, conv.orig ? conv.orig.currency : null, price != null]);
+  await recordPrice(id, conv.value, conv.currency);
+  const { rows } = await pool.query(`SELECT * FROM items WHERE id=$1`, [id]);
+  res.json(rows[0]);
+});
+
+// Edit a present by hand. Send only the fields to change. Changing the price protects it from
+// automatic updates unless price_locked is sent as false; details_locked works the same for the rest.
+app.post("/api/items/:id/edit", async (req, res) => {
+  const { rows } = await pool.query(`SELECT * FROM items WHERE id=$1`, [req.params.id]);
+  if (!rows.length) return res.status(404).json({ error: "Not found" });
+  const cur = rows[0], b = req.body || {};
+
+  const title = "title" in b ? cleanText(b.title, 200) : cur.title;
+  if (!title) return res.status(400).json({ error: "Give the present a name" });
+  const description = "description" in b ? (cleanText(b.description, 500) || null) : cur.description;
+
+  let image = cur.image;
+  if ("image" in b) {
+    if (String(b.image ?? "").trim()) {
+      image = httpUrlOrNull(String(b.image).trim());
+      if (!image) return res.status(400).json({ error: "The image link doesn't look right" });
+    } else image = null;
+  }
+
+  let url = cur.url;
+  if ("url" in b) {
+    if (String(b.url ?? "").trim()) {
+      const found = extractUrl(b.url);
+      if (!found) return res.status(400).json({ error: "That link doesn't look right" });
+      url = cleanUrl(found);
+    } else url = "";
+  }
+
+  let value = cur.price_value, currency = cur.price_currency, origValue = cur.orig_value, origCurrency = cur.orig_currency;
+  const priceGiven = "price" in b;
+  if (priceGiven) {
+    const price = parsePrice(b.price);
+    if (price === undefined) return res.status(400).json({ error: "Price must be a number" });
+    const conv = await toGBP(price, b.currency);
+    value = conv.value; currency = conv.currency;
+    origValue = conv.orig ? conv.orig.value : null; origCurrency = conv.orig ? conv.orig.currency : null;
+  }
+  const priceLocked = "price_locked" in b ? !!b.price_locked : (priceGiven ? true : !!cur.price_locked);
+  const detailsLocked = "details_locked" in b ? !!b.details_locked : !!cur.details_locked;
+
+  await pool.query(
+    `UPDATE items SET title=$2, description=$3, image=$4, url=$5, store=$6, price_value=$7, price_currency=$8,
+       orig_value=$9, orig_currency=$10, price_locked=$11, details_locked=$12 WHERE id=$1`,
+    [cur.id, title, description, image, url, url ? normalizeHost(url) : null, value, currency, origValue, origCurrency, priceLocked, detailsLocked]);
+  if (priceGiven) await recordPrice(cur.id, value, currency);
+  const out = await pool.query(`SELECT * FROM items WHERE id=$1`, [cur.id]);
+  res.json(out.rows[0]);
+});
+
 async function refreshItem(id) {
   const { rows } = await pool.query(`SELECT * FROM items WHERE id=$1`, [id]);
   if (!rows.length) return null;
-  const data = await scrapeProduct(rows[0].url);
+  const cur = rows[0];
+  if (!cur.url) throw Object.assign(new Error("This present has no link to check"), { status: 400 });
+  const data = await scrapeProduct(cur.url);
+  const priceLocked = !!cur.price_locked, detailsLocked = !!cur.details_locked;
   await pool.query(
     `UPDATE items SET store=$2,
-       title=CASE WHEN $3 = '(No title found)' THEN title ELSE COALESCE($3, title) END,
-       image=COALESCE($4, image), description=COALESCE($5, description),
-       price_value=COALESCE($6, price_value),
-       price_currency=CASE WHEN $6::numeric IS NULL THEN price_currency ELSE $7 END,
-       orig_value=CASE WHEN $6::numeric IS NULL THEN orig_value ELSE $10::numeric END,
-       orig_currency=CASE WHEN $6::numeric IS NULL THEN orig_currency ELSE $11 END,
+       title=CASE WHEN $13::boolean OR $3 = '(No title found)' THEN title ELSE COALESCE($3, title) END,
+       image=CASE WHEN $13::boolean THEN image ELSE COALESCE($4, image) END,
+       description=CASE WHEN $13::boolean THEN description ELSE COALESCE($5, description) END,
+       price_value=CASE WHEN $12::boolean THEN price_value ELSE COALESCE($6, price_value) END,
+       price_currency=CASE WHEN $12::boolean OR $6::numeric IS NULL THEN price_currency ELSE $7 END,
+       orig_value=CASE WHEN $12::boolean OR $6::numeric IS NULL THEN orig_value ELSE $10::numeric END,
+       orig_currency=CASE WHEN $12::boolean OR $6::numeric IS NULL THEN orig_currency ELSE $11 END,
        last_checked=$8, source=$9
      WHERE id=$1`,
-    [id, data.store, data.title, data.image, data.description, data.priceValue, data.priceCurrency, data.lastChecked, data.source, data.origValue, data.origCurrency]
+    [id, data.store, data.title, data.image, data.description, data.priceValue, data.priceCurrency, data.lastChecked, data.source, data.origValue, data.origCurrency, priceLocked, detailsLocked]
   );
-  await recordPrice(id, data.priceValue, data.priceCurrency);
+  if (!priceLocked) await recordPrice(id, data.priceValue, data.priceCurrency);
   const { rows: fresh } = await pool.query(`SELECT * FROM items WHERE id=$1`, [id]);
-  return fresh[0];
+  const item = fresh[0];
+  if (!priceLocked && alertsEnabled() && cur.price_currency === "GBP" && item.price_currency === "GBP" && priceDropped(cur.price_value, item.price_value)) {
+    const r = await sendAlert(dropMessage(item, cur.price_value, item.price_value));
+    if (!r.sent) console.error("Price alert not sent:", r.reason);
+  }
+  return item;
 }
 
 app.post("/api/refresh/:id", async (req, res) => {
@@ -457,7 +577,7 @@ app.post("/api/refresh/:id", async (req, res) => {
     if (!item) return res.status(404).json({ error: "Not found" });
     res.json(item);
   } catch (e) {
-    res.status(500).json({ error: e.message || "Refresh failed" });
+    res.status(e.status || 500).json({ error: e.message || "Refresh failed" });
   }
 });
 
@@ -470,7 +590,7 @@ app.post("/api/refresh-all", async (req, res) => {
   const wanted = Buffer.from(token);
   if (given.length !== wanted.length || !crypto.timingSafeEqual(given, wanted)) return res.status(401).json({ error: "Wrong token" });
   if (refreshAllRunning) return res.status(202).json({ started: false, message: "Already running" });
-  const { rows } = await pool.query(`SELECT id FROM items ORDER BY last_checked NULLS FIRST`);
+  const { rows } = await pool.query(`SELECT id FROM items WHERE url <> '' ORDER BY last_checked NULLS FIRST`);
   refreshAllRunning = true;
   res.status(202).json({ started: true, items: rows.length });
   (async () => {
@@ -479,6 +599,15 @@ app.post("/api/refresh-all", async (req, res) => {
     }
     refreshAllRunning = false;
   })();
+});
+
+/* ---------------- Price-drop alerts ---------------- */
+app.get("/api/alerts/status", (_req, res) => res.json({ enabled: alertsEnabled() }));
+app.post("/api/alerts/test", async (_req, res) => {
+  if (!alertsEnabled()) return res.status(400).json({ error: "Alerts aren't switched on yet. Set NTFY_TOPIC on the server." });
+  const r = await sendAlert({ title: "Ffi's Presents test", message: "If you can read this, price-drop alerts are working.", tags: ["white_check_mark"] });
+  if (!r.sent) return res.status(502).json({ error: "Couldn't send the alert: " + r.reason });
+  res.json({ ok: true });
 });
 
 const itemUpdater = (sql, pick) => async (req, res) => {

@@ -75,6 +75,8 @@ async function initDb() {
   await pool.query(`ALTER TABLE items ADD COLUMN IF NOT EXISTS favourite BOOLEAN DEFAULT FALSE;`);
   await pool.query(`ALTER TABLE items ADD COLUMN IF NOT EXISTS claimed_by TEXT;`);
   await pool.query(`ALTER TABLE items ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT now();`);
+  await pool.query(`ALTER TABLE items ADD COLUMN IF NOT EXISTS orig_value NUMERIC;`);
+  await pool.query(`ALTER TABLE items ADD COLUMN IF NOT EXISTS orig_currency TEXT;`);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS lists (
       id TEXT PRIMARY KEY,
@@ -105,6 +107,54 @@ async function initDb() {
   `);
 }
 
+/* ---------- Currency conversion (everything is shown in pounds) ---------- */
+// ECB rates via frankfurter.app (free, no API key), cached for an hour.
+// FX_API_URL can point somewhere else (the tests do).
+const FX_BASE = process.env.FX_API_URL || "https://api.frankfurter.app";
+const rateCache = new Map();
+async function gbpRate(cur) {
+  const hit = rateCache.get(cur);
+  if (hit && Date.now() - hit.at < 3600_000) return hit.rate;
+  const res = await fetch(`${FX_BASE}/latest?from=${encodeURIComponent(cur)}&to=GBP`, { signal: AbortSignal.timeout(8000) });
+  if (!res.ok) throw new Error("No exchange rate for " + cur + " (" + res.status + ")");
+  const rate = (await res.json())?.rates?.GBP;
+  if (typeof rate !== "number" || !(rate > 0)) throw new Error("No GBP rate for " + cur);
+  rateCache.set(cur, { rate, at: Date.now() });
+  return rate;
+}
+const round2 = (n) => Math.round(n * 100) / 100;
+
+// -> { value, currency, rate, orig }. Pounds stay as they are; anything else is converted and the
+// original amount is kept in `orig`. If no rate is available the price keeps its own currency.
+async function toGBP(value, currency) {
+  if (value == null) return { value: null, currency: null, rate: null, orig: null };
+  const cur = String(currency || "GBP").toUpperCase();
+  if (cur === "GBP") return { value, currency: "GBP", rate: 1, orig: null };
+  try {
+    const rate = await gbpRate(cur);
+    return { value: round2(value * rate), currency: "GBP", rate, orig: { value, currency: cur } };
+  } catch (e) {
+    console.error("Conversion failed:", e.message);
+    return { value, currency: cur, rate: null, orig: null };
+  }
+}
+
+// Prices saved in another currency (older items, imports) are converted once a rate is available.
+async function convertExistingToGBP() {
+  const { rows } = await pool.query(
+    `SELECT id, price_value, price_currency FROM items
+     WHERE price_value IS NOT NULL AND price_currency IS NOT NULL AND price_currency <> 'GBP'`);
+  for (const it of rows) {
+    const conv = await toGBP(Number(it.price_value), it.price_currency);
+    if (conv.currency !== "GBP") continue;
+    await pool.query(`UPDATE items SET price_value=$2, price_currency='GBP', orig_value=$3, orig_currency=$4 WHERE id=$1`,
+      [it.id, conv.value, conv.orig.value, conv.orig.currency]);
+    await pool.query(
+      `UPDATE price_history SET price=ROUND(price * $3::numeric, 2), currency='GBP' WHERE item_id=$1 AND currency=$2`,
+      [it.id, it.price_currency, conv.rate]);
+  }
+}
+
 // Remember a price only when it differs from the last one we saw.
 async function recordPrice(itemId, value, currency) {
   if (value == null) return;
@@ -121,6 +171,7 @@ async function initDbWithRetry() {
       await initDb();
       dbReady = true;
       console.log("Database ready");
+      convertExistingToGBP().catch((e) => console.error("Converting saved prices failed:", e.message));
     } catch (e) {
       console.error("DB init failed (attempt " + attempt + "): " + e.message);
       await new Promise(r => setTimeout(r, Math.min(30000, 2000 * attempt)));
@@ -165,14 +216,19 @@ async function scrapeProduct(url) {
     } catch {}
   }
 
+  // Everything is shown in pounds: convert anything else and keep the original amount.
+  const conv = await toGBP(priceValue, priceCurrency);
+
   return {
     url,
     store: host,
     title: title || "(No title found)",
     image,
     description: description || null,
-    priceValue: priceValue ?? null,
-    priceCurrency: priceValue != null ? (priceCurrency || "GBP") : null, // keep the shop's own currency
+    priceValue: conv.value ?? null,
+    priceCurrency: conv.currency,
+    origValue: conv.orig ? conv.orig.value : null,
+    origCurrency: conv.orig ? conv.orig.currency : null,
     lastChecked: new Date().toISOString(),
     source
   };
@@ -269,14 +325,15 @@ app.post("/api/import", express.json({ limit: "20mb" }), async (req, res) => {
     if (!it?.url) continue;
     const id = it.id || newId();
     const r = await pool.query(
-      `INSERT INTO items (id,url,store,title,image,description,price_value,price_currency,last_checked,source,bought,notes,list_id,favourite,claimed_by,created_at)
+      `INSERT INTO items (id,url,store,title,image,description,price_value,price_currency,last_checked,source,bought,notes,list_id,favourite,claimed_by,created_at,orig_value,orig_currency)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,
-               (SELECT id FROM lists WHERE id=$13),$14,$15,$16)
+               (SELECT id FROM lists WHERE id=$13),$14,$15,$16,$17,$18)
        ON CONFLICT (id) DO NOTHING`,
       [id, it.url, it.store ?? null, it.title ?? null, it.image ?? null, it.description ?? null,
        it.price_value ?? null, it.price_currency ?? "GBP", it.last_checked ?? new Date().toISOString(),
        it.source ?? "import", !!it.bought, it.notes ?? null,
-       it.list_id ?? null, !!it.favourite, it.claimed_by ?? null, it.created_at ?? new Date().toISOString()]
+       it.list_id ?? null, !!it.favourite, it.claimed_by ?? null, it.created_at ?? new Date().toISOString(),
+       it.orig_value ?? null, it.orig_currency ?? null]
     );
     if (r.rowCount) {
       added += 1;
@@ -288,6 +345,7 @@ app.post("/api/import", express.json({ limit: "20mb" }), async (req, res) => {
       if (!own.length) await recordPrice(id, it.price_value, it.price_currency ?? "GBP");
     }
   }
+  convertExistingToGBP().catch((e) => console.error("Converting imported prices failed:", e.message));
   res.json({ ok: true, added });
 });
 
@@ -360,9 +418,9 @@ app.post("/api/add", async (req, res) => {
     const data = await scrapeProduct(url);
     const id = newId();
     await pool.query(
-      `INSERT INTO items (id,url,store,title,image,description,price_value,price_currency,last_checked,source,bought,notes,list_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,false,null,(SELECT id FROM lists WHERE id=$11))`,
-      [id, data.url, data.store, data.title, data.image, data.description, data.priceValue, data.priceCurrency, data.lastChecked, data.source, req.body?.list_id ?? null]
+      `INSERT INTO items (id,url,store,title,image,description,price_value,price_currency,last_checked,source,bought,notes,list_id,orig_value,orig_currency)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,false,null,(SELECT id FROM lists WHERE id=$11),$12,$13)`,
+      [id, data.url, data.store, data.title, data.image, data.description, data.priceValue, data.priceCurrency, data.lastChecked, data.source, req.body?.list_id ?? null, data.origValue, data.origCurrency]
     );
     await recordPrice(id, data.priceValue, data.priceCurrency);
     const { rows } = await pool.query(`SELECT * FROM items WHERE id=$1`, [id]);
@@ -382,9 +440,11 @@ async function refreshItem(id) {
        image=COALESCE($4, image), description=COALESCE($5, description),
        price_value=COALESCE($6, price_value),
        price_currency=CASE WHEN $6::numeric IS NULL THEN price_currency ELSE $7 END,
+       orig_value=CASE WHEN $6::numeric IS NULL THEN orig_value ELSE $10::numeric END,
+       orig_currency=CASE WHEN $6::numeric IS NULL THEN orig_currency ELSE $11 END,
        last_checked=$8, source=$9
      WHERE id=$1`,
-    [id, data.store, data.title, data.image, data.description, data.priceValue, data.priceCurrency, data.lastChecked, data.source]
+    [id, data.store, data.title, data.image, data.description, data.priceValue, data.priceCurrency, data.lastChecked, data.source, data.origValue, data.origCurrency]
   );
   await recordPrice(id, data.priceValue, data.priceCurrency);
   const { rows: fresh } = await pool.query(`SELECT * FROM items WHERE id=$1`, [id]);
@@ -456,7 +516,7 @@ app.get("/api/share/:token", async (req, res) => {
   const list = await listByToken(req.params.token);
   if (!list) return res.status(404).json({ error: "This link isn't active any more" });
   const { rows } = await pool.query(
-    `SELECT id, title, image, url, description, price_value, price_currency, bought, claimed_by, favourite
+    `SELECT id, title, image, url, description, price_value, price_currency, orig_value, orig_currency, bought, claimed_by, favourite
      FROM items WHERE list_id=$1 ORDER BY favourite DESC, created_at DESC, id DESC`, [list.id]);
   res.json({ list: { name: list.name }, items: rows });
 });

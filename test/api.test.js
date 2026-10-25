@@ -164,8 +164,21 @@ test("a Shopify shop that answers in euros is asked for the UK storefront", { sk
   await fetch(s.base + "/api/items/" + item.id, { method: "DELETE" });
 });
 
-test("a non-Shopify shop in euros keeps its own currency and is fetched once", { skip: !hasDb }, async (t) => {
-  const s = await startServer(3205);
+// A fake exchange-rate service. rates: { EUR: 0.85 }; anything else answers 404.
+function fakeFx(rates) {
+  return http.createServer((req, res) => {
+    const from = new URL(req.url, "http://x").searchParams.get("from");
+    res.setHeader("content-type", "application/json");
+    if (rates[from]) res.end(JSON.stringify({ rates: { GBP: rates[from] } }));
+    else { res.statusCode = 404; res.end(JSON.stringify({ message: "not found" })); }
+  });
+}
+
+test("a non-Shopify shop in euros is converted to pounds and the original is kept", { skip: !hasDb }, async (t) => {
+  const fx = fakeFx({ EUR: 0.85 });
+  const fxPort = await listen(fx);
+  t.after(() => fx.close());
+  const s = await startServer(3205, { FX_API_URL: "http://127.0.0.1:" + fxPort });
   t.after(s.stop);
   const hits = [];
   const shop = fakeShop("other-eur", hits);
@@ -173,8 +186,52 @@ test("a non-Shopify shop in euros keeps its own currency and is fetched once", {
   t.after(() => shop.close());
 
   const item = await (await post(s.base, "/api/add", { url: `http://127.0.0.1:${port}/p/1` })).json();
-  assert.equal(Number(item.price_value), 83);
-  assert.equal(item.price_currency, "EUR");
+  assert.equal(Number(item.price_value), 70.55);
+  assert.equal(item.price_currency, "GBP");
+  assert.equal(Number(item.orig_value), 83);
+  assert.equal(item.orig_currency, "EUR");
   assert.equal(hits.length, 1);
   await fetch(s.base + "/api/items/" + item.id, { method: "DELETE" });
+});
+
+test("if no exchange rate is available the price keeps its own currency", { skip: !hasDb }, async (t) => {
+  const fx = fakeFx({});
+  const fxPort = await listen(fx);
+  t.after(() => fx.close());
+  const s = await startServer(3206, { FX_API_URL: "http://127.0.0.1:" + fxPort });
+  t.after(s.stop);
+  const shop = fakeShop("other-eur", []);
+  const port = await listen(shop);
+  t.after(() => shop.close());
+
+  const item = await (await post(s.base, "/api/add", { url: `http://127.0.0.1:${port}/p/2` })).json();
+  assert.equal(Number(item.price_value), 83);
+  assert.equal(item.price_currency, "EUR");
+  assert.equal(item.orig_value, null);
+  await fetch(s.base + "/api/items/" + item.id, { method: "DELETE" });
+});
+
+test("saved prices in other currencies are converted once, history included", { skip: !hasDb }, async (t) => {
+  const fx = fakeFx({ USD: 0.8 });
+  const fxPort = await listen(fx);
+  t.after(() => fx.close());
+  const s = await startServer(3207, { FX_API_URL: "http://127.0.0.1:" + fxPort });
+  t.after(s.stop);
+  const uid = Date.now().toString(36), id = "usd_" + uid;
+  await post(s.base, "/api/import", {
+    items: [{ id, url: "https://example.com/usd", title: "Dollar item", price_value: 100, price_currency: "USD" }],
+    price_history: [{ item_id: id, price: 125, currency: "USD", at: "2026-01-01T00:00:00Z" }, { item_id: id, price: 100, currency: "USD", at: "2026-02-01T00:00:00Z" }]
+  });
+  let item;
+  for (let i = 0; i < 40; i++) { // conversion runs in the background after import
+    item = (await (await fetch(s.base + "/api/items")).json()).find((x) => x.id === id);
+    if (item.price_currency === "GBP") break;
+    await new Promise((r) => setTimeout(r, 150));
+  }
+  assert.equal(item.price_currency, "GBP");
+  assert.equal(Number(item.price_value), 80);
+  assert.equal(Number(item.orig_value), 100);
+  assert.equal(item.orig_currency, "USD");
+  assert.deepEqual(item.history.map((h) => [h.p, h.c]), [[100, "GBP"], [80, "GBP"]]);
+  await fetch(s.base + "/api/items/" + id, { method: "DELETE" });
 });

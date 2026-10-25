@@ -33,6 +33,7 @@ function cardHtml(it, i) {
     (it.favourite ? '<span class="fav" aria-label="A top pick" style="background:var(--yellow);color:var(--ink);pointer-events:none">' + STAR + "</span>" : "") +
     '<span class="pricepill' + (it.price_value == null ? " none" : "") + '">' + esc(money(it.price_value, it.price_currency)) + "</span></div>" +
     '<div class="body"><h2 class="title">' + esc(it.title || "(No title)") + "</h2>" +
+    (it.orig_currency && it.orig_value != null && it.price_currency === "GBP" ? '<p class="orig">Converted from ' + esc(money(Number(it.orig_value), it.orig_currency)) + " (approx.)</p>" : "") +
     (it.description ? '<p class="desc">' + esc(it.description) + "</p>" : "") +
     '<div class="linkrow">' + (href ? '<a href="' + esc(href) + '" target="_blank" rel="noopener">Open product</a>' : "") + "</div>" +
     action + "</div>";

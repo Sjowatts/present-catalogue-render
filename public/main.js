@@ -111,6 +111,15 @@ function panelHtml(list, scope) {
 const STAR = '<svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9L12 3Z"/></svg>';
 const IMG_PLACEHOLDER = '<svg aria-hidden="true" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="m21 16-5-5-9 9"/></svg><span>No image</span>';
 
+// Where a pound price came from, or a heads-up when it could not be converted yet.
+function origNote(it) {
+  if (it.orig_currency && it.orig_value != null && it.price_currency === "GBP")
+    return '<p class="orig">Converted from ' + esc(money(Number(it.orig_value), it.orig_currency)) + " (approx.)</p>";
+  if (it.price_value != null && it.price_currency && it.price_currency !== "GBP")
+    return '<p class="orig">Not converted to pounds yet. Try Refresh later.</p>';
+  return "";
+}
+
 function cardHtml(it) {
   const img = safeUrl(it.image), href = safeUrl(it.url);
   const color = listColor(it.list_id);
@@ -131,6 +140,7 @@ function cardHtml(it) {
     '<span class="pricepill' + (price == null ? " none" : "") + '">' + esc(money(price, cur)) + "</span></div>" +
     '<div class="body"><h2 class="title">' + esc(it.title || "(No title)") + "</h2>" +
     (it.description ? '<p class="desc">' + esc(it.description) + "</p>" : "") +
+    origNote(it) +
     '<div class="trend">' + sparkSvg(pts, change != null && change < 0 ? "#2ee6a8" : "#ffd23f") + pill + claim + "</div>" +
     '<div class="linkrow">' + (href ? '<a href="' + esc(href) + '" target="_blank" rel="noopener">Open product</a>' : "") +
     '<span class="checked">Checked ' + esc(ago(it.last_checked)) + "</span></div>" +

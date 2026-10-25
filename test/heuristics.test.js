@@ -46,3 +46,12 @@ test("embedded offers: most common price wins over a one-off related item", () =
   const html = "<script>" + [offer(16), offer(16), offer(16), offer(40)].join(",") + "</script>";
   assert.equal(scrapeWithHeuristics(html, "https://shop.example/x").priceValue, 16);
 });
+
+import { looksLikeShopify, withCountryGB } from "../lib/storefront.js";
+
+test("storefront helpers", () => {
+  assert.equal(looksLikeShopify('<script src="https://cdn.shopify.com/s/files/x.js"></script>'), true);
+  assert.equal(looksLikeShopify("<html>plain shop</html>"), false);
+  assert.equal(withCountryGB("https://a.example/products/x?variant=1"), "https://a.example/products/x?variant=1&country=GB");
+  assert.equal(withCountryGB("https://a.example/products/x"), "https://a.example/products/x?country=GB");
+});

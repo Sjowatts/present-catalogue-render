@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import http from "node:http";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const hasDb = !!process.env.DATABASE_URL;
@@ -128,4 +129,52 @@ test("optional password and refresh token", { skip: !hasDb }, async (t) => {
   assert.equal((await fetch(s.base + "/api/share/" + "0".repeat(32))).status, 404);
   assert.equal((await post(s.base, "/api/refresh-all", {}, { "x-refresh-token": "bad" })).status, 401);
   assert.equal((await post(s.base, "/api/refresh-all", {}, { "x-refresh-token": "tok" })).status, 202);
+});
+
+// A fake shop. `mode`: "shopify-eur" answers in euros unless asked for ?country=GB;
+// "other-eur" is not Shopify and always answers in euros.
+function fakeShop(mode, hits) {
+  const page = (price, cur, shopify) =>
+    "<html><head><title>Jumper</title>" + (shopify ? '<script src="https://cdn.shopify.com/s/x.js"></script>' : "") +
+    '<script type="application/ld+json">' + JSON.stringify({ "@type": "Product", name: "Jumper", offers: { "@type": "Offer", price, priceCurrency: cur } }) +
+    "</script></head><body><h1>Jumper</h1></body></html>";
+  return http.createServer((req, res) => {
+    hits.push(req.url + " | cookie: " + (req.headers.cookie || ""));
+    const gb = new URL(req.url, "http://x").searchParams.get("country") === "GB";
+    res.setHeader("content-type", "text/html");
+    res.end(mode === "shopify-eur" && gb ? page("70.00", "GBP", true) : page("83.00", "EUR", mode === "shopify-eur"));
+  });
+}
+const listen = (srv) => new Promise((r) => srv.listen(0, "127.0.0.1", () => r(srv.address().port)));
+
+test("a Shopify shop that answers in euros is asked for the UK storefront", { skip: !hasDb }, async (t) => {
+  const s = await startServer(3204);
+  t.after(s.stop);
+  const hits = [];
+  const shop = fakeShop("shopify-eur", hits);
+  const port = await listen(shop);
+  t.after(() => shop.close());
+
+  const item = await (await post(s.base, "/api/add", { url: `http://127.0.0.1:${port}/products/jumper` })).json();
+  assert.equal(Number(item.price_value), 70);
+  assert.equal(item.price_currency, "GBP");
+  assert.equal(hits.length, 2);
+  assert.match(hits[0], /localization=GB/);
+  assert.match(hits[1], /country=GB/);
+  await fetch(s.base + "/api/items/" + item.id, { method: "DELETE" });
+});
+
+test("a non-Shopify shop in euros keeps its own currency and is fetched once", { skip: !hasDb }, async (t) => {
+  const s = await startServer(3205);
+  t.after(s.stop);
+  const hits = [];
+  const shop = fakeShop("other-eur", hits);
+  const port = await listen(shop);
+  t.after(() => shop.close());
+
+  const item = await (await post(s.base, "/api/add", { url: `http://127.0.0.1:${port}/p/1` })).json();
+  assert.equal(Number(item.price_value), 83);
+  assert.equal(item.price_currency, "EUR");
+  assert.equal(hits.length, 1);
+  await fetch(s.base + "/api/items/" + item.id, { method: "DELETE" });
 });

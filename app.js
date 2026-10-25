@@ -8,6 +8,7 @@ dotenv.config();
 import fetch from "node-fetch";
 import { scrapeWithHeuristics } from "./lib/heuristics.js";
 import { renderHtmlWithPlaywright } from "./lib/renderers/playwright.js";
+import { BROWSER_HEADERS, looksLikeShopify, withCountryGB } from "./lib/storefront.js";
 
 import pgPkg from "pg";
 const { Pool } = pgPkg;
@@ -134,18 +135,24 @@ async function scrapeProduct(url) {
 
   // First try fast fetch
   try {
-    const res = await fetch(url, {
-      headers: {
-        "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36",
-        "accept": "text/html,application/xhtml+xml",
-        "accept-language": "en-GB,en;q=0.9",
-        "cache-control": "no-cache", "pragma": "no-cache"
-      },
-      redirect: "follow"
-    });
+    const res = await fetch(url, { headers: BROWSER_HEADERS, redirect: "follow" });
     if (res.ok) {
       const html = await res.text();
       ({ title, image, priceValue, priceCurrency, description } = scrapeWithHeuristics(html, url));
+
+      // A Shopify shop that answered in another currency (it sees a server in Frankfurt):
+      // ask for the UK storefront and use that answer if it is in pounds.
+      if (priceValue != null && priceCurrency && priceCurrency !== "GBP" && looksLikeShopify(html)) {
+        try {
+          const gb = await fetch(withCountryGB(url), { headers: BROWSER_HEADERS, redirect: "follow" });
+          if (gb.ok) {
+            const again = scrapeWithHeuristics(await gb.text(), url);
+            if (again.priceValue != null && again.priceCurrency === "GBP") {
+              ({ title, image, priceValue, priceCurrency, description } = again);
+            }
+          }
+        } catch {}
+      }
     }
   } catch {}
 
@@ -187,11 +194,23 @@ app.get("/api/debug-price", async (req, res) => {
   if (!/^https?:\/\//.test(url)) return res.status(400).json({ error: "Pass ?url=https://..." });
   const out = { url };
   try {
-    const r = await fetch(url, { headers: { "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36", "accept-language": "en-GB,en;q=0.9" }, redirect: "follow" });
+    const r = await fetch(url, { headers: BROWSER_HEADERS, redirect: "follow" });
     out.fetchStatus = r.status;
     if (r.ok) {
       const html = await r.text();
       out.fast = scrapeWithHeuristics(html, url, { debug: true });
+      out.shopify = looksLikeShopify(html);
+      if (out.shopify) {
+        try {
+          const gb = await fetch(withCountryGB(url), { headers: BROWSER_HEADERS, redirect: "follow" });
+          out.ukStorefront = { status: gb.status };
+          if (gb.ok) {
+            const again = scrapeWithHeuristics(await gb.text(), url, { debug: true });
+            out.ukStorefront.priceValue = again.priceValue;
+            out.ukStorefront.priceCurrency = again.priceCurrency;
+          }
+        } catch (e) { out.ukStorefront = { error: e.message }; }
+      }
       // Price-like text anywhere in the raw HTML (inline scripts, data attributes) to see where a shop hides its price.
       out.priceSnippets = [...html.matchAll(/.{0,60}(?:price|amount)["'\s]*[:=]\s*["']?[£$€]?\d[\d.,]*.{0,30}/gi)]
         .slice(0, 25).map(m => m[0].replace(/\s+/g, " "));

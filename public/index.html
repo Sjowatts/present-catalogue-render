@@ -8,6 +8,13 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=DM+Sans:wght@400;500;700&display=swap">
 <link rel="stylesheet" href="/style.css">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="theme-color" content="#140d24">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Presents">
 </head>
 <body>
   <div class="ribbon" aria-hidden="true"></div>
@@ -19,6 +26,8 @@
       <h1>Ffi's Presents</h1>
     </div>
     <div class="topbar-actions">
+      <button type="button" class="btn" id="phoneBtn">Add from phone</button>
+      <button type="button" class="btn" id="alertsBtn">Price alerts</button>
       <a href="/api/export" download style="text-decoration:none"><button type="button" class="btn">Export</button></a>
       <button type="button" class="btn" id="importBtn">Import</button>
       <input type="file" id="importFile" accept="application/json" hidden>
@@ -37,6 +46,7 @@
         </div>
         <button type="button" class="btn-primary" id="add">Add</button>
         <button type="button" class="btn btn-secondary" id="refreshAll">Refresh prices</button>
+        <button type="button" class="btn btn-secondary" id="addByHand">Add by hand</button>
       </div>
       <p class="status" id="status" role="status" aria-live="polite"></p>
     </section>
@@ -91,6 +101,50 @@
       <h2 id="shareTitle">Share this list</h2>
       <div id="shareBody"></div>
       <div class="dlg-actions"><button type="button" class="btn" id="shareClose">Close</button></div>
+    </div>
+  </dialog>
+
+  <dialog id="itemDialog" aria-labelledby="itemDialogTitle">
+    <form method="dialog" class="dlg" id="itemForm">
+      <h2 id="itemDialogTitle">Add by hand</h2>
+      <label>Name <input id="fTitle" required maxlength="200" placeholder="e.g. Hand-made scarf"></label>
+      <label>Link (optional) <input id="fUrl" type="text" inputmode="url" placeholder="Paste a link if there is one"></label>
+      <div class="row">
+        <label>Price <input id="fPrice" type="number" min="0" step="0.01" inputmode="decimal" placeholder="12.50"></label>
+        <label>Currency
+          <select id="fCurrency"><option>GBP</option><option>EUR</option><option>USD</option><option>AUD</option><option>CAD</option></select>
+        </label>
+      </div>
+      <label>Photo link (optional) <input id="fImage" type="text" inputmode="url" placeholder="Link to a picture"></label>
+      <label>Description (optional) <input id="fDesc" maxlength="500" placeholder="A few words about it"></label>
+      <div id="lockBox" class="lockbox">
+        <label class="check"><input type="checkbox" id="fPriceLock"> Keep my price (don't change it when prices are checked)</label>
+        <label class="check"><input type="checkbox" id="fDetailsLock"> Keep my name, photo and description (don't change them when prices are checked)</label>
+      </div>
+      <p class="status error" id="itemError" role="alert"></p>
+      <div class="dlg-actions">
+        <button type="button" class="btn" id="itemCancel">Cancel</button>
+        <button type="submit" class="btn btn-violet" id="itemSave">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="phoneDialog" aria-labelledby="phoneTitle">
+    <div class="dlg">
+      <h2 id="phoneTitle">Add presents from your phone</h2>
+      <p><b>Android (Chrome):</b> open this site, tap the menu (three dots) then <b>Install app</b>. After that, on any shop page tap <b>Share</b> and choose <b>Ffi's Presents</b>.</p>
+      <p><b>iPhone:</b> in Safari tap <b>Share</b> then <b>Add to Home Screen</b>. To add from a shop page, make a Shortcut: open the Shortcuts app, tap <b>+</b>, add the action <b>Open URLs</b>, and set its address to the text below followed by the <b>Shortcut Input</b>. In the shortcut's settings turn on <b>Show in Share Sheet</b>.</p>
+      <div class="copyrow"><input id="phoneLink" readonly aria-label="Address for the shortcut"><button type="button" class="btn btn-violet" id="phoneCopy">Copy</button></div>
+      <p><b>On a computer:</b> drag this button to your bookmarks bar, then click it on any shop page: <a id="bookmarklet" class="btn btn-small" href="#">Add to Ffi's Presents</a></p>
+      <div class="dlg-actions"><button type="button" class="btn" id="phoneClose">Close</button></div>
+    </div>
+  </dialog>
+
+  <dialog id="alertsDialog" aria-labelledby="alertsTitle">
+    <div class="dlg">
+      <h2 id="alertsTitle">Price alerts</h2>
+      <div id="alertsBody"><p>Checking…</p></div>
+      <div class="dlg-actions"><button type="button" class="btn" id="alertsClose">Close</button></div>
     </div>
   </dialog>
 

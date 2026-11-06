@@ -344,3 +344,44 @@ test("the owner's full backup covers every page and can restore one person", { s
   await owner.del(`/api/spaces/${mum.slug}?confirm=${mum.slug}`);
   await owner.del(`/api/items/${rootItem.id}`);
 });
+
+test("the family menu lists everyone, only to people who are signed in", { skip: !hasDb }, async (t) => {
+  const s = await startServer(3228, { APP_PASSWORD: "owner-pass" });
+  t.after(s.stop);
+  const owner = client(s.base, "", { admin: true });
+  const uid = Date.now().toString(36);
+  const made = (await (await owner.post("/api/spaces", { names: ["Mum" + uid, "Dad" + uid, "Owain" + uid] })).json()).created;
+  const [mum, dad] = made;
+  const m = client(s.base, mum.slug);
+
+  // not signed in: nothing
+  assert.equal((await m.get("/api/family")).status, 401);
+  assert.equal((await client(s.base, "").get("/api/family")).status, 401);
+
+  // signed in to one page: sees everyone's name and address, and nothing secret
+  await m.login(mum.pin);
+  const seen = await (await m.get("/api/family")).json();
+  assert.deepEqual(seen.map((x) => x.slug), made.map((x) => x.slug));
+  assert.deepEqual(Object.keys(seen[0]).sort(), ["name", "slug"]);
+  assert.ok(!JSON.stringify(seen).includes(mum.pin));
+
+  // seeing the menu doesn't open anyone else's page
+  assert.equal((await client(s.base, dad.slug).get("/api/items")).status, 401);
+  const asMum = client(s.base, dad.slug); asMum.setCookie(m.cookie);
+  assert.equal((await asMum.get("/api/items")).status, 401);
+
+  // the owner sees them on their own site too
+  assert.deepEqual((await (await owner.get("/api/family")).json()).map((x) => x.slug), made.map((x) => x.slug));
+
+  // a page that is signed in elsewhere and then deleted drops out of the menu
+  await owner.del(`/api/spaces/${made[2].slug}?confirm=${made[2].slug}`);
+  assert.deepEqual((await (await m.get("/api/family")).json()).map((x) => x.slug), [mum.slug, dad.slug]);
+
+  for (const c of [mum, dad]) await owner.del(`/api/spaces/${c.slug}?confirm=${c.slug}`);
+});
+
+test("without a password the owner's open site shows no family menu", { skip: !hasDb }, async (t) => {
+  const s = await startServer(3229, { APP_PASSWORD: undefined });
+  t.after(s.stop);
+  assert.deepEqual(await (await client(s.base, "").get("/api/family")).json(), []);
+});

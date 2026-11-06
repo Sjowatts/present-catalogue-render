@@ -442,3 +442,64 @@ test("share everything: one link per person, only that person's presents, claim 
   assert.equal((await anon("/api/pageshare/" + again)).status, 404);
   await owner.del(`/api/spaces/${dad.slug}?confirm=${dad.slug}`);
 });
+
+test("notifications: price rises, and someone ticking I'll get this", { skip: !hasDb }, async (t) => {
+  const got = [];
+  const ntfy = fakeNtfy(got), nport = await listen(ntfy);
+  t.after(() => ntfy.close());
+  const s = await startServer(3231, { APP_PASSWORD: "owner-pass", NTFY_SERVER: "http://127.0.0.1:" + nport, NTFY_TOPIC: undefined });
+  t.after(s.stop);
+  const owner = client(s.base, "", { admin: true });
+  const uid = Date.now().toString(36);
+  const [mum, dad] = (await (await owner.post("/api/spaces", { names: ["Mum" + uid, "Dad" + uid] })).json()).created;
+  const m = client(s.base, mum.slug), d = client(s.base, dad.slug);
+  await m.login(mum.pin); await d.login(dad.pin);
+  const state = { title: "Vase", price: 50 };
+  const shop = mutableShop(state), port = await listen(shop);
+  t.after(() => shop.close());
+  const topic = "mums-topic-" + uid;
+  await m.post("/api/alerts/topic", { topic });
+
+  const item = await (await m.post("/api/add", { url: `http://127.0.0.1:${port}/p/c-${uid}` })).json();
+  const dadItem = await (await d.post("/api/add", { url: `http://127.0.0.1:${port}/p/d-${uid}` })).json();
+
+  // a rise of 2% or more is announced; a tiny wobble is not
+  let n = got.length;
+  state.price = 50.4; await m.post("/api/refresh/" + item.id, {});
+  assert.equal(got.length, n);
+  state.price = 60; await m.post("/api/refresh/" + item.id, {});
+  assert.equal(got.length, n + 1);
+  assert.equal(got.at(-1).topic, topic);
+  assert.match(got.at(-1).title, /^Price up: /);
+  assert.match(got.at(-1).message, /£60\.00 \(was £50\.40, 19% more\)/);
+
+  // someone ticking "I'll get this" on a shared page tells that page's phone, once
+  const { token } = await (await m.post("/api/page-share", { enabled: true })).json();
+  const anon = (p, body) => fetch(s.base + p, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  n = got.length;
+  assert.equal((await anon(`/api/pageshare/${token}/claim`, { itemId: item.id, name: "Sam" })).status, 200);
+  await new Promise((r) => setTimeout(r, 300));
+  assert.equal(got.length, n + 1);
+  assert.equal(got.at(-1).topic, topic);
+  assert.equal(got.at(-1).title, "Sam is getting a present");
+  assert.equal(got.at(-1).message, "Vase");
+
+  await anon(`/api/pageshare/${token}/claim`, { itemId: item.id, name: "Sam" }); // ticking again: nothing new
+  assert.equal((await anon(`/api/pageshare/${token}/claim`, { itemId: item.id, name: "Alex" })).status, 409); // refused: nothing sent
+  await new Promise((r) => setTimeout(r, 300));
+  assert.equal(got.length, n + 1);
+
+  await anon(`/api/pageshare/${token}/claim`, { itemId: item.id, name: "Sam", claim: false });
+  await new Promise((r) => setTimeout(r, 300));
+  assert.equal(got.length, n + 2);
+  assert.equal(got.at(-1).title, "Sam changed their mind");
+
+  // Dad has no topic, so a claim on his page sends nothing and still works
+  const dshare = (await (await d.post("/api/page-share", { enabled: true })).json()).token;
+  n = got.length;
+  assert.equal((await anon(`/api/pageshare/${dshare}/claim`, { itemId: dadItem.id, name: "Sam" })).status, 200);
+  await new Promise((r) => setTimeout(r, 300));
+  assert.equal(got.length, n);
+
+  for (const c of [mum, dad]) await owner.del(`/api/spaces/${c.slug}?confirm=${c.slug}`);
+});

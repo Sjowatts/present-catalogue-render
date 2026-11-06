@@ -19,7 +19,7 @@ Your own site, at the plain address, stays as it was.
 
 - They open their own address, type their PIN and use the site exactly like yours.
 - **Change PIN** lets them pick a PIN they'll remember. **Sign out** locks it again on that device.
-- They set up their own price-drop alerts (**Price alerts**), so their alerts go to their own phone.
+- They set up their own **Notifications**, so price changes (up or down 2%+) and "someone is getting this" messages go to their own phone. Use a topic only the organiser subscribes to if the list is a surprise.
 - They can install their page as an app on their phone (**Add from phone**).
 
 - Every page has a **Family** row with everyone's name. Tapping a name opens that person's page. It still asks for

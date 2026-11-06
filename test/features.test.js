@@ -176,20 +176,23 @@ test("price-drop alerts", { skip: !hasDb }, async (t) => {
 
   state.price = 44.5; // only 1.1% lower: not worth an alert
   await post(s.base, "/api/refresh/" + item.id, {});
-  state.price = 60; // a rise
-  await post(s.base, "/api/refresh/" + item.id, {});
   assert.equal(ntfy.got.length, 1);
+  state.price = 60; // a rise of 2% or more is announced too
+  await post(s.base, "/api/refresh/" + item.id, {});
+  assert.equal(ntfy.got.length, 2);
+  assert.match(ntfy.got[1].title, /Price up: Candle Set/);
+  assert.match(ntfy.got[1].message, /£60\.00 \(was £44\.50, 35% more\)/);
 
   // protected prices never alert
   await post(s.base, `/api/items/${item.id}/edit`, { price: 80 });
   state.price = 10;
   await post(s.base, "/api/refresh/" + item.id, {});
-  assert.equal(ntfy.got.length, 1);
+  assert.equal(ntfy.got.length, 2);
 
   // the test button
   assert.equal((await post(s.base, "/api/alerts/test", {})).status, 200);
-  assert.equal(ntfy.got.length, 2);
-  assert.match(ntfy.got[1].message, /working/);
+  assert.equal(ntfy.got.length, 3);
+  assert.match(ntfy.got[2].message, /working/);
   ntfy.status = 500;
   assert.equal((await post(s.base, "/api/alerts/test", {})).status, 502);
   await del(s.base, item.id);

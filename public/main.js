@@ -242,7 +242,7 @@ async function renderPeople() {
   if (!people.length) { box.hidden = true; return; }
   const here = (slug) => (slug === SPACE ? ' aria-current="page"' : "");
   box.innerHTML = '<span class="eyebrow">Family</span>' +
-    (SPACE ? "" : '<a class="chip chip-person" href="/" aria-current="page">Mine</a>') +
+    '<a class="chip chip-person" href="/"' + (SPACE ? "" : ' aria-current="page"') + ">Ffi’s Presents</a>" +
     people.map((x) => '<a class="chip chip-person" href="/' + esc(x.slug) + '"' + here(x.slug) + ">" + esc(x.name) + "</a>").join("");
   box.hidden = false;
 }

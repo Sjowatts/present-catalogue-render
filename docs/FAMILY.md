@@ -22,6 +22,9 @@ Your own site, at the plain address, stays as it was.
 - They set up their own price-drop alerts (**Price alerts**), so their alerts go to their own phone.
 - They can install their page as an app on their phone (**Add from phone**).
 
+- Every page has a **Family** row with everyone's name. Tapping a name opens that person's page. It still asks for
+  that person's PIN, unless this device is already signed in there, so nobody's presents are opened by the menu.
+
 ## You (the owner)
 
 - You can open any page without its PIN: you are already signed in with the site password.

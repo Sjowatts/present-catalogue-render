@@ -215,3 +215,10 @@ body.locked main, body.locked .topbar-actions { visibility:hidden }
 
 .status.warn { color:var(--warm) }
 .warnnote { color:var(--warm) }
+
+/* family menu */
+.people { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:-8px }
+.people .eyebrow { margin-right:4px }
+.chip-person { min-height:34px; padding:0 14px; font-size:13px; text-decoration:none; color:var(--text-soft) }
+.chip-person:hover { color:var(--text) }
+.chip-person[aria-current="page"] { background:var(--surface-2); border-color:var(--accent); color:var(--text); font-weight:600 }

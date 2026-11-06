@@ -11,6 +11,7 @@ const possessive = (name) => (/s$/i.test(name) ? name + "'" : name + "'s");
 const COLORS = ["#c8a96a", "#8aa6c9", "#7fb59d", "#c98f7a", "#a79bc4", "#8d939e"];
 
 let items = [], lists = [];
+let renderedPeople = false;
 const prefs = { list: "all", filter: "all", sort: "new", q: "" };
 const PREFS_KEY = "ffis-prefs" + (SPACE ? "-" + SPACE : "");
 try { Object.assign(prefs, JSON.parse(localStorage.getItem(PREFS_KEY) || "{}"), { q: "" }); } catch {}
@@ -232,10 +233,25 @@ function render() {
   }
 }
 
+// The family menu: a row of everyone's names; each opens that person's page (which asks for their PIN
+// unless this device is already signed in there).
+async function renderPeople() {
+  let people = [];
+  try { people = await api("/api/family"); } catch { return; }
+  const box = $("people");
+  if (!people.length) { box.hidden = true; return; }
+  const here = (slug) => (slug === SPACE ? ' aria-current="page"' : "");
+  box.innerHTML = '<span class="eyebrow">Family</span>' +
+    (SPACE ? "" : '<a class="chip chip-person" href="/" aria-current="page">Mine</a>') +
+    people.map((x) => '<a class="chip chip-person" href="/' + esc(x.slug) + '"' + here(x.slug) + ">" + esc(x.name) + "</a>").join("");
+  box.hidden = false;
+}
+
 async function load() {
   try {
     [items, lists] = await Promise.all([api("/api/items"), api("/api/lists")]);
     render();
+    if (!renderedPeople) { renderedPeople = true; renderPeople(); }
     return true;
   } catch (e) {
     if (e.status === 401 && e.data && e.data.code === "pin_required") showLogin();

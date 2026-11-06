@@ -880,6 +880,14 @@ app.get("/api/manifest/:slug", async (req, res) => {
   });
 });
 
+// The family menu: everyone's name and address, for anyone signed in to a page (or the owner).
+// Opening another page still asks for that person's PIN. The owner's own site lists them only for the owner.
+app.get("/api/family", async (req, res) => {
+  if (req.space === "" && !adminOk(req)) return res.json([]);
+  const { rows } = await pool.query(`SELECT slug, name FROM spaces WHERE slug <> '' ORDER BY created_at, slug`);
+  res.json(rows);
+});
+
 app.get("/api/spaces", needAdmin, async (_req, res) => {
   const { rows } = await pool.query(`
     SELECT s.slug, s.name, s.created_at, (s.pin_hash IS NOT NULL) AS has_pin,

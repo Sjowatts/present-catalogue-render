@@ -1,6 +1,6 @@
 const $ = (id) => document.getElementById(id);
 const token = location.pathname.split("/").pop();
-const COLORS = ["#ff5c97", "#2ee6a8", "#5ec8ff", "#ff8a3d", "#b69bff", "#ffd23f"];
+const COLORS = ["#c8a96a", "#8aa6c9", "#7fb59d", "#c98f7a", "#a79bc4", "#8d939e"];
 let items = [];
 
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
@@ -30,7 +30,7 @@ function cardHtml(it, i) {
   else action = '<button type="button" class="btn btn-primary claimbtn" style="min-height:48px;font-size:16px" data-id="' + esc(it.id) + '" data-claim="true">I’ll get this</button>';
   return '<div class="thumb">' + (img ? '<img src="' + esc(img) + '" alt="" loading="lazy">' : IMG_PLACEHOLDER) +
     '<span class="badge">' + esc(hostOf(it.url)) + "</span>" +
-    (it.favourite ? '<span class="fav" aria-label="A top pick" style="background:var(--yellow);color:var(--ink);pointer-events:none">' + STAR + "</span>" : "") +
+    (it.favourite ? '<span class="fav" aria-label="A top pick" style="background:var(--accent);border-color:var(--accent);color:var(--ink);pointer-events:none">' + STAR + "</span>" : "") +
     '<span class="pricepill' + (it.price_value == null ? " none" : "") + '">' + esc(money(it.price_value, it.price_currency)) + "</span></div>" +
     '<div class="body"><h2 class="title">' + esc(it.title || "(No title)") + "</h2>" +
     (it.orig_currency && it.orig_value != null && it.price_currency === "GBP" ? '<p class="orig">Converted from ' + esc(money(Number(it.orig_value), it.orig_currency)) + " (approx.)</p>" : "") +

@@ -8,7 +8,7 @@ window.fetch = (input, init = {}) => {
   return nativeFetch(input, init);
 };
 const possessive = (name) => (/s$/i.test(name) ? name + "'" : name + "'s");
-const COLORS = ["#ff5c97", "#2ee6a8", "#5ec8ff", "#ff8a3d", "#b69bff", "#ffd23f"];
+const COLORS = ["#c8a96a", "#8aa6c9", "#7fb59d", "#c98f7a", "#a79bc4", "#8d939e"];
 
 let items = [], lists = [];
 const prefs = { list: "all", filter: "all", sort: "new", q: "" };
@@ -26,7 +26,7 @@ const money = (v, cur) => {
   try { return new Intl.NumberFormat("en-GB", { style:"currency", currency: cur || "GBP" }).format(v); }
   catch { return Number(v).toFixed(2) + (cur ? " " + cur : ""); }
 };
-const listColor = (id) => { const i = lists.findIndex((l) => l.id === id); return i < 0 ? "#b69bff" : COLORS[i % COLORS.length]; };
+const listColor = (id) => { const i = lists.findIndex((l) => l.id === id); return i < 0 ? "#8d939e" : COLORS[i % COLORS.length]; };
 const activeList = () => lists.find((l) => l.id === prefs.list) || null;
 
 function ago(iso) {
@@ -151,7 +151,7 @@ function cardHtml(it) {
     '<div class="body"><h2 class="title">' + esc(it.title || "(No title)") + "</h2>" +
     (it.description ? '<p class="desc">' + esc(it.description) + "</p>" : "") +
     origNote(it) +
-    '<div class="trend">' + sparkSvg(pts, change != null && change < 0 ? "#2ee6a8" : "#ffd23f") + pill + claim + "</div>" +
+    '<div class="trend">' + sparkSvg(pts, change != null && change < 0 ? "#6bbf9b" : "#c8a96a") + pill + claim + "</div>" +
     '<div class="linkrow">' + (href ? '<a href="' + esc(href) + '" target="_blank" rel="noopener">Open product</a>' : "") +
     '<span class="checked">' + (it.price_locked ? "Price set by you" : it.url ? "Checked " + esc(ago(it.last_checked)) : "") + "</span></div>" +
     '<div class="rule"></div>' +
@@ -169,7 +169,7 @@ function render() {
   // lists row
   const inList = (id) => items.filter((i) => i.list_id === id).length;
   $("lists").innerHTML =
-    '<button type="button" class="chip" data-list="all" aria-pressed="' + (prefs.list === "all") + '" style="--c:#ffd23f">All <span class="n">' + items.length + "</span></button>" +
+    '<button type="button" class="chip" data-list="all" aria-pressed="' + (prefs.list === "all") + '" style="--c:#c8a96a">All <span class="n">' + items.length + "</span></button>" +
     lists.map((l, i) => '<button type="button" class="chip" data-list="' + esc(l.id) + '" aria-pressed="' + (prefs.list === l.id) + '" style="--c:' + COLORS[i % COLORS.length] + '"><span class="dot"></span>' + esc(l.name) + ' <span class="n">' + inList(l.id) + "</span></button>").join("") +
     '<button type="button" class="chip chip-add" id="newList">+ New list</button>';
 
@@ -242,13 +242,14 @@ async function load() {
 }
 
 /* ---------- confetti ---------- */
+const CONFETTI = ["#c8a96a", "#f3f4f6", "#8aa6c9", "#6bbf9b"];
 function confetti(x, y) {
   if (window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches) return;
   const cv = $("confetti"), ctx = cv.getContext("2d");
   cv.width = innerWidth; cv.height = innerHeight;
-  const parts = Array.from({ length: 70 }, () => ({
+  const parts = Array.from({ length: 56 }, () => ({
     x, y, vx: (Math.random() - .5) * 10, vy: -Math.random() * 11 - 3, r: Math.random() * 6 + 4, rot: Math.random() * 6,
-    vr: (Math.random() - .5) * .4, c: COLORS[Math.floor(Math.random() * COLORS.length)]
+    vr: (Math.random() - .5) * .4, c: CONFETTI[Math.floor(Math.random() * CONFETTI.length)]
   }));
   let frame = 0;
   (function tick() {

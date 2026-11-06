@@ -840,7 +840,7 @@ app.get("/api/manifest/:slug", async (req, res) => {
   res.type("application/manifest+json").json({
     id: "/" + row.slug, name: possessive(row.name) + " Presents", short_name: row.name,
     description: "A gift list with prices, budgets and shareable lists",
-    start_url: "/" + row.slug, scope: "/", display: "standalone", background_color: "#140d24", theme_color: "#140d24",
+    start_url: "/" + row.slug, scope: "/", display: "standalone", background_color: "#0e0f12", theme_color: "#0e0f12",
     icons: [
       { src: "/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any maskable" },
       { src: "/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any maskable" }

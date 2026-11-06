@@ -385,17 +385,45 @@ function shareHtml(list) {
     '<div class="dlg-actions"><button type="button" class="btn btn-danger" id="shareOff">Stop sharing</button></div>';
 }
 let sharingId = null;
+let sharingAll = false; // true while the dialog is about the whole page rather than one list
 function openShare(list) {
+  sharingAll = false;
   sharingId = list.id;
+  $("shareTitle").textContent = "Share this list";
   $("shareBody").innerHTML = shareHtml(list);
   if (!$("shareDialog").open) $("shareDialog").showModal();
 }
+function shareAllHtml(token) {
+  if (!token) {
+    return "<p>Make one private link for everything on this page: every list, with all the links, pictures and prices. Whoever has it can look and tick “I’ll get this”, but can’t change anything and never sees your notes.</p>" +
+      '<div class="dlg-actions"><button type="button" class="btn btn-violet" id="shareOn">Create link</button></div>';
+  }
+  const link = location.origin + "/w/" + token;
+  return "<p>Anyone with this link can see everything on this page. Send it only to people you trust.</p>" +
+    '<div class="copyrow"><input id="shareLink" readonly value="' + esc(link) + '" aria-label="Share link"><button type="button" class="btn btn-violet" id="shareCopy">Copy</button></div>' +
+    '<div class="dlg-actions"><button type="button" class="btn btn-danger" id="shareOff">Stop sharing</button></div>';
+}
+async function openShareAll() {
+  try {
+    const { token } = await api("/api/page-share");
+    sharingAll = true;
+    $("shareTitle").textContent = "Share everything";
+    $("shareBody").innerHTML = shareAllHtml(token);
+    if (!$("shareDialog").open) $("shareDialog").showModal();
+  } catch (err) { say(err.message, true); }
+}
+$("shareAllBtn").onclick = openShareAll;
 $("shareClose").onclick = () => $("shareDialog").close();
 $("shareBody").addEventListener("click", async (e) => {
   try {
     if (e.target.closest("#shareOn") || e.target.closest("#shareOff")) {
       const on = !!e.target.closest("#shareOn");
       if (!on && !confirm("Stop sharing? The current link will stop working.")) return;
+      if (sharingAll) {
+        const { token } = await send("/api/page-share", { enabled: on });
+        $("shareBody").innerHTML = shareAllHtml(token);
+        return;
+      }
       const updated = await send("/api/lists/" + sharingId + "/share", { enabled: on });
       lists = lists.map((l) => (l.id === updated.id ? updated : l));
       render(); openShare(updated);

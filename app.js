@@ -66,7 +66,7 @@ const needAdmin = (req, res, next) => {
     : "Set APP_PASSWORD on the server first, so only you can manage the family pages" });
 };
 
-const OPEN_ASSETS = /^\/(healthz|s\/[a-f0-9]{32}|style\.css|main\.js|shared\.js|favicon\.svg|extract\.js|manifest\.webmanifest|sw\.js|icon-192\.png|icon-512\.png|apple-touch-icon\.png)$/;
+const OPEN_ASSETS = /^\/(healthz|[sw]\/[a-f0-9]{32}|style\.css|main\.js|shared\.js|favicon\.svg|extract\.js|manifest\.webmanifest|sw\.js|icon-192\.png|icon-512\.png|apple-touch-icon\.png)$/;
 const SLUG_PAGE = /^\/([a-z0-9][a-z0-9-]{1,29})$/;
 app.use((req, res, next) => {
   if (req.path.startsWith("/api/") || OPEN_ASSETS.test(req.path)) return next();
@@ -123,6 +123,7 @@ async function initDb() {
       created_at TIMESTAMPTZ DEFAULT now()
     );
   `);
+  await pool.query(`CREATE TABLE IF NOT EXISTS page_shares (space TEXT PRIMARY KEY, token TEXT UNIQUE NOT NULL, created_at TIMESTAMPTZ DEFAULT now())`);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS price_history (
       id BIGSERIAL PRIMARY KEY,
@@ -335,7 +336,7 @@ const cookieName = (slug) => "ffi_" + slug;
 const cookieOk = (req, slug) => !!sessionSecret && verifyToken(sessionSecret, parseCookies(req.headers.cookie)[cookieName(slug)]) === slug;
 const SESSION_MS = 30 * 24 * 3600 * 1000;
 
-const OPEN_API = /^\/api\/(share\/[a-f0-9]{32}(\/claim)?|refresh-all|space-info|space-login|space-logout|manifest\/[a-z0-9-]+)$/;
+const OPEN_API = /^\/api\/((page)?share\/[a-f0-9]{32}(\/claim)?|refresh-all|space-info|space-login|space-logout|manifest\/[a-z0-9-]+)$/;
 
 /* ---------------- API ---------------- */
 app.get("/healthz", (_req, res) => res.json({ ok: true, db: dbReady }));
@@ -803,12 +804,11 @@ app.get("/api/share/:token", async (req, res) => {
   res.json({ list: { name: list.name }, items: rows });
 });
 
-app.post("/api/share/:token/claim", async (req, res) => {
-  const list = await listByToken(req.params.token);
-  if (!list) return res.status(404).json({ error: "This link isn't active any more" });
+// Tick or untick "I'll get this". `scope` is the WHERE clause that limits which presents this link can touch.
+async function claimItem(req, res, scopeSql, scopeArgs) {
   const name = cleanText(req.body?.name, 40);
   if (!name) return res.status(400).json({ error: "Add your name first" });
-  const { rows } = await pool.query(`SELECT id, claimed_by FROM items WHERE id=$1 AND list_id=$2`, [req.body?.itemId, list.id]);
+  const { rows } = await pool.query(`SELECT id, claimed_by FROM items WHERE id=$1 AND ${scopeSql}`, [req.body?.itemId, ...scopeArgs]);
   if (!rows.length) return res.status(404).json({ error: "Present not found" });
   const owner = rows[0].claimed_by;
   if (req.body?.claim === false) {
@@ -819,6 +819,56 @@ app.post("/api/share/:token/claim", async (req, res) => {
     await pool.query(`UPDATE items SET claimed_by=$2 WHERE id=$1`, [rows[0].id, name]);
   }
   res.json({ ok: true });
+}
+
+app.post("/api/share/:token/claim", async (req, res) => {
+  const list = await listByToken(req.params.token);
+  if (!list) return res.status(404).json({ error: "This link isn't active any more" });
+  await claimItem(req, res, `list_id=$2`, [list.id]);
+});
+
+/* ---------------- Share everything: one link for a whole person's page ---------------- */
+const SHARE_ITEM_COLUMNS = `id, list_id, title, image, url, description, price_value, price_currency, orig_value, orig_currency, bought, claimed_by, favourite`;
+const pageByToken = async (token) => {
+  if (!/^[a-f0-9]{32}$/.test(String(token))) return null;
+  const { rows } = await pool.query(`SELECT space FROM page_shares WHERE token=$1`, [token]);
+  return rows[0] || null;
+};
+
+// The signed-in person (or the owner) turns the link on or off. Turning it on again makes a new link.
+app.get("/api/page-share", async (req, res) => {
+  const { rows } = await pool.query(`SELECT token FROM page_shares WHERE space=$1`, [req.space]);
+  res.json({ token: rows[0]?.token || null });
+});
+app.post("/api/page-share", async (req, res) => {
+  if (!req.body?.enabled) {
+    await pool.query(`DELETE FROM page_shares WHERE space=$1`, [req.space]);
+    return res.json({ token: null });
+  }
+  const token = crypto.randomBytes(16).toString("hex");
+  await pool.query(
+    `INSERT INTO page_shares (space, token) VALUES ($1,$2) ON CONFLICT (space) DO UPDATE SET token=EXCLUDED.token, created_at=now()`,
+    [req.space, token]);
+  res.json({ token });
+});
+
+app.get("/w/:token", (_req, res) => res.sendFile(path.join(publicDir, "shared.html")));
+
+// Names, prices, pictures and links of every list on the page. No notes, no PIN, nothing else.
+app.get("/api/pageshare/:token", async (req, res) => {
+  const share = await pageByToken(req.params.token);
+  if (!share) return res.status(404).json({ error: "This link isn't active any more" });
+  const sp = share.space ? await getSpace(share.space) : null;
+  const lists = (await pool.query(`SELECT id, name FROM lists WHERE space=$1 ORDER BY created_at, id`, [share.space])).rows;
+  const items = (await pool.query(
+    `SELECT ${SHARE_ITEM_COLUMNS} FROM items WHERE space=$1 ORDER BY favourite DESC, created_at DESC, id DESC`, [share.space])).rows;
+  res.json({ title: possessive(sp?.name || "Ffi") + " Presents", lists, items });
+});
+
+app.post("/api/pageshare/:token/claim", async (req, res) => {
+  const share = await pageByToken(req.params.token);
+  if (!share) return res.status(404).json({ error: "This link isn't active any more" });
+  await claimItem(req, res, `space=$2`, [share.space]);
 });
 
 /* ---------------- Spaces: PIN login, the owner's page for managing them ---------------- */
@@ -934,6 +984,7 @@ app.delete("/api/spaces/:slug", needAdmin, async (req, res) => {
   await pool.query(`DELETE FROM price_history WHERE item_id IN (SELECT id FROM items WHERE space=$1)`, [row.slug]);
   await pool.query(`DELETE FROM items WHERE space=$1`, [row.slug]);
   await pool.query(`DELETE FROM lists WHERE space=$1`, [row.slug]);
+  await pool.query(`DELETE FROM page_shares WHERE space=$1`, [row.slug]);
   await pool.query(`DELETE FROM spaces WHERE slug=$1`, [row.slug]);
   clearSpaceCache();
   res.json({ ok: true });

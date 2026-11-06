@@ -385,3 +385,59 @@ test("without a password the owner's open site shows no family menu", { skip: !h
   t.after(s.stop);
   assert.deepEqual(await (await client(s.base, "").get("/api/family")).json(), []);
 });
+
+test("share everything: one link per person, only that person's presents, claim works, revoke works", { skip: !hasDb }, async (t) => {
+  const s = await startServer(3230, { APP_PASSWORD: "owner-pass" });
+  t.after(s.stop);
+  const owner = client(s.base, "", { admin: true });
+  const uid = Date.now().toString(36);
+  const made = (await (await owner.post("/api/spaces", { names: ["Mum" + uid, "Dad" + uid] })).json()).created;
+  const [mum, dad] = made;
+  const m = client(s.base, mum.slug), d = client(s.base, dad.slug);
+  await m.login(mum.pin); await d.login(dad.pin);
+
+  const list = await (await m.post("/api/lists", { name: "Birthday" })).json();
+  await m.post("/api/import", { items: [
+    { id: "m1_" + uid, url: "https://example.com/m1", title: "Mum scarf", price_value: 9, notes: "secret note" },
+    { id: "m2_" + uid, url: "https://example.com/m2", title: "Mum book", price_value: 7 }] });
+  await m.post(`/api/items/m1_${uid}/list`, { list_id: list.id });
+  await d.post("/api/import", { items: [{ id: "d1_" + uid, url: "https://example.com/d1", title: "Dad socks", price_value: 4 }] });
+
+  // you must be signed in to manage the link
+  assert.equal((await client(s.base, mum.slug).post("/api/page-share", { enabled: true })).status, 401);
+  assert.equal((await m.get("/api/page-share").then((r) => r.json())).token, null);
+
+  const { token } = await (await m.post("/api/page-share", { enabled: true })).json();
+  assert.match(token, /^[a-f0-9]{32}$/);
+
+  // no PIN needed to look; shows only Mum's lists and presents, no notes
+  const anon = (p, body) => fetch(s.base + p, { method: body ? "POST" : "GET", headers: { "content-type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
+  const view = await (await anon("/api/pageshare/" + token)).json();
+  assert.match(view.title, /^Mum/);
+  assert.deepEqual(view.items.map((i) => i.title).sort(), ["Mum book", "Mum scarf"]);
+  assert.deepEqual(view.lists.map((l) => l.name), ["Birthday"]);
+  assert.ok(view.items.every((i) => !("notes" in i)));
+  assert.equal((await anon("/w/" + token)).status, 200);
+
+  // claiming works, and only for Mum's presents
+  const claim = (itemId, body) => anon(`/api/pageshare/${token}/claim`, { itemId, ...body });
+  assert.equal((await claim("m1_" + uid, { name: "Sam" })).status, 200);
+  assert.equal((await claim("m1_" + uid, { name: "Alex" })).status, 409);
+  assert.equal((await claim("d1_" + uid, { name: "Sam" })).status, 404);
+  assert.equal((await claim("m1_" + uid, { name: "Sam", claim: false })).status, 200);
+
+  // the link can't be used to reach the private page itself, or other people's data
+  assert.equal((await client(s.base, mum.slug).get("/api/items")).status, 401);
+  assert.equal((await anon("/api/pageshare/" + "0".repeat(32))).status, 404);
+
+  // turning it off kills the link; turning it on again makes a different one
+  await m.post("/api/page-share", { enabled: false });
+  assert.equal((await anon("/api/pageshare/" + token)).status, 404);
+  const again = (await (await m.post("/api/page-share", { enabled: true })).json()).token;
+  assert.notEqual(again, token);
+
+  // deleting the person's page also kills the link
+  await owner.del(`/api/spaces/${mum.slug}?confirm=${mum.slug}`);
+  assert.equal((await anon("/api/pageshare/" + again)).status, 404);
+  await owner.del(`/api/spaces/${dad.slug}?confirm=${dad.slug}`);
+});

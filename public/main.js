@@ -39,9 +39,10 @@ function ago(iso) {
   return Math.round(hrs / 24) + " days ago";
 }
 
-function say(msg, isError) {
+function say(msg, kind) {
   $("status").textContent = msg || "";
-  $("status").classList.toggle("error", !!isError);
+  $("status").classList.toggle("error", kind === true);
+  $("status").classList.toggle("warn", kind === "warn");
 }
 
 async function api(path, opts) {
@@ -123,6 +124,8 @@ const IMG_PLACEHOLDER = '<svg aria-hidden="true" width="40" height="40" viewBox=
 
 // Where a pound price came from, or a heads-up when it could not be converted yet.
 function origNote(it) {
+  if (it.url && it.price_value == null && !it.price_locked && (it.source === "blocked" || !it.image))
+    return '<p class="orig warnnote">This shop couldn\'t be read automatically. Press Edit to add the price and photo.</p>';
   if (it.orig_currency && it.orig_value != null && it.price_currency === "GBP")
     return '<p class="orig">Converted from ' + esc(money(Number(it.orig_value), it.orig_currency)) + " (approx.)</p>";
   if (it.price_value != null && it.price_currency && it.price_currency !== "GBP")
@@ -297,7 +300,9 @@ grid.addEventListener("click", async (e) => {
       await api("/api/items/" + del.dataset.id, { method:"DELETE" }); await load();
     } else if (ref) {
       ref.disabled = true; ref.textContent = "Refreshing…";
-      await api("/api/refresh/" + ref.dataset.id, { method:"POST" }); await load();
+      const r = await api("/api/refresh/" + ref.dataset.id, { method:"POST" });
+      say(r.lookup && r.lookup.unread ? (hostOf(r.url) || "The shop") + " wouldn't let this site read the page, so nothing was updated." : "", r.lookup && r.lookup.unread ? "warn" : false);
+      await load();
     } else if (fav) {
       const on = fav.getAttribute("aria-pressed") !== "true";
       await send("/api/items/" + fav.dataset.id + "/favourite", { favourite: on }); await load();
@@ -387,7 +392,7 @@ $("shareBody").addEventListener("click", async (e) => {
 });
 
 /* ---------- add, refresh, import ---------- */
-function sayDuplicate(err, url) {
+function sayDuplicate(err, url, hint) {
   const st = $("status");
   st.classList.remove("error");
   st.textContent = err.message + ". ";
@@ -400,7 +405,7 @@ function sayDuplicate(err, url) {
   };
   const again = document.createElement("button");
   again.type = "button"; again.className = "linkbtn"; again.textContent = "Add anyway";
-  again.onclick = () => addItem({ force: true, url });
+  again.onclick = () => addItem({ force: true, url, hint });
   st.append(show, again);
 }
 
@@ -410,11 +415,15 @@ async function addItem(opts = {}) {
   const btn = $("add");
   btn.disabled = true; btn.textContent = "Adding…"; say("Looking up the product. This can take a few seconds.");
   try {
-    await send("/api/add", { url, force: !!opts.force, list_id: prefs.list === "all" ? null : prefs.list });
-    $("url").value = ""; say("");
+    const added = await send("/api/add", { url, hint: opts.hint, force: !!opts.force, list_id: prefs.list === "all" ? null : prefs.list });
+    $("url").value = "";
+    const shop = hostOf(added.url);
+    if (added.lookup && added.lookup.blocked) say((shop || "That shop") + " doesn't let this site read its pages, so I saved the link with a name from the address. Press Edit on the card to add the price and photo, or use \"Add from phone\" to add it straight from the shop's page.", "warn");
+    else if (added.lookup && added.lookup.unread) say("I couldn't read any details from that page. Press Edit on the card to add them.", "warn");
+    else say("");
     await load();
   } catch (e) {
-    if (e.status === 409) sayDuplicate(e, url); else say(e.message, true);
+    if (e.status === 409) sayDuplicate(e, url, opts.hint); else say(e.message, true);
   }
   btn.disabled = false; btn.textContent = "Add";
 }
@@ -424,12 +433,14 @@ $("url").addEventListener("keydown", (e) => { if (e.key === "Enter") addItem(); 
 $("refreshAll").onclick = async () => {
   const btn = $("refreshAll"); btn.disabled = true;
   const targets = items.filter((i) => prefs.list === "all" || i.list_id === prefs.list);
-  let failed = 0;
+  let failed = 0, refused = 0;
   for (let n = 0; n < targets.length; n++) {
     say("Checking price " + (n + 1) + " of " + targets.length + "…");
-    try { await api("/api/refresh/" + targets[n].id, { method:"POST" }); } catch { failed++; }
+    try { const r = await api("/api/refresh/" + targets[n].id, { method:"POST" }); if (r.lookup && r.lookup.unread) refused++; } catch { failed++; }
   }
-  say(failed ? failed + " of " + targets.length + " could not be checked." : "Prices checked.", !!failed);
+  if (failed) say(failed + " of " + targets.length + " could not be checked.", true);
+  else if (refused) say("Prices checked. " + refused + (refused === 1 ? " shop wouldn't" : " shops wouldn't") + " let this site read the page, so those weren't updated.", "warn");
+  else say("Prices checked.");
   btn.disabled = false;
   await load();
 };
@@ -498,32 +509,46 @@ $("itemForm").addEventListener("submit", async (e) => {
 });
 
 /* ---------- add from phone ---------- */
+// The two small functions in extract.js read the shop page in your own browser (so a shop that blocks
+// this site can't stop it) and build a link back here that carries the name, picture and price.
+const pageBase = () => location.origin + (SPACE ? "/" + SPACE : "/");
+const extractorSource = () => (ffiExtract.toString() + ";" + ffiLink.toString()).replace(/\s*\n\s*/g, " ");
+const bookmarkletHref = () => "javascript:(function(){" + extractorSource() + ";location.href=ffiLink(" + JSON.stringify(pageBase()) + ");})()";
+const shortcutScript = () => extractorSource() + "\ncompletion(ffiLink(" + JSON.stringify(pageBase()) + "));";
+
 function openPhoneDialog() {
-  const base = location.origin + (SPACE ? "/" + SPACE : "/") + "?add=";
-  $("phoneLink").value = base;
-  $("bookmarklet").href = "javascript:(function(){location.href=" + JSON.stringify(base) + "+encodeURIComponent(location.href)})()";
+  $("phoneLink").value = pageBase() + "?add=";
+  $("bookmarklet").href = bookmarkletHref();
   $("phoneDialog").showModal();
 }
 $("phoneBtn").onclick = openPhoneDialog;
 $("phoneClose").onclick = () => $("phoneDialog").close();
 $("bookmarklet").addEventListener("click", (e) => e.preventDefault());
+$("scriptCopy").onclick = (e) => copyText(shortcutScript(), e.target);
 $("phoneCopy").onclick = async (e) => {
   try { await navigator.clipboard.writeText($("phoneLink").value); e.target.textContent = "Copied"; }
   catch { $("phoneLink").select(); e.target.textContent = "Press Cmd+C"; }
 };
 
 // Opened from a share or the shortcut/bookmarklet: /?add=<link> or /?url=<link>&text=...
+// -> { url, hint } or null. Details can come with the link: t=name, i=picture, d=description, p=price, c=currency
+// (from the bookmarklet or the iPhone Shortcut), or the page title from a phone's Share button.
 function takeSharedLink() {
   const q = new URLSearchParams(location.search);
   if (!["add", "url", "text", "title"].some((k) => q.has(k))) return null;
   const grab = (v) => (v || "").match(/https?:\/\/[^\s<>"']+/i);
+  const hasDetails = ["t", "i", "p"].some((k) => q.has(k));
   let found = null;
-  // /?add= takes everything after it, so a link pasted without encoding (with its own & and ?) stays whole.
-  const raw = location.search.match(/[?&]add=(.*)$/);
+  // /?add= with nothing after it but the link takes everything, so a link pasted without encoding keeps its own & and ?.
+  const raw = !hasDetails && location.search.match(/[?&]add=(.*)$/);
   if (raw) { let v = raw[1]; try { v = decodeURIComponent(v); } catch {} found = grab(v); }
-  if (!found) found = [q.get("url"), q.get("text"), q.get("title")].map(grab).find(Boolean);
+  if (!found) found = [q.get("add"), q.get("url"), q.get("text"), q.get("title")].map(grab).find(Boolean);
+  const hint = {};
+  if (hasDetails) {
+    hint.title = q.get("t"); hint.image = q.get("i"); hint.description = q.get("d"); hint.price = q.get("p"); hint.currency = q.get("c");
+  } else if (q.get("title") && !/https?:\/\//i.test(q.get("title"))) hint.title = q.get("title");
   history.replaceState(null, "", location.pathname);
-  return found ? found[0] : null;
+  return found ? { url: found[0], hint } : null;
 }
 
 /* ---------- price alerts ---------- */
@@ -672,7 +697,7 @@ $("search").value = "";
 $("exportLink").href = "/api/export?space=" + encodeURIComponent(SPACE);
 
 async function boot() {
-  const sharedLink = takeSharedLink();
+  const shared = takeSharedLink();
   if (SPACE) {
     $("siteTitle").textContent = "";
     $("manifestLink").href = "/api/manifest/" + SPACE;
@@ -685,7 +710,7 @@ async function boot() {
   document.title = title;
   $("familyBtn").hidden = !!SPACE;
   $("pinBtn").hidden = !SPACE; $("lockBtn").hidden = !SPACE;
-  if (sharedLink) afterSignIn = () => addItem({ url: sharedLink });
+  if (shared) afterSignIn = () => addItem({ url: shared.url, hint: shared.hint });
   if (await load() && afterSignIn) { const f = afterSignIn; afterSignIn = null; f(); }
 }
 boot();

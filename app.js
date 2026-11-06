@@ -15,6 +15,7 @@ import {
 } from "./lib/spaces.js";
 import { renderHtmlWithPlaywright } from "./lib/renderers/playwright.js";
 import { BROWSER_HEADERS, looksLikeShopify, withCountryGB } from "./lib/storefront.js";
+import { looksBlocked, titleFromUrl, cleanHint } from "./lib/lookup.js";
 
 import pgPkg from "pg";
 const { Pool } = pgPkg;
@@ -65,7 +66,7 @@ const needAdmin = (req, res, next) => {
     : "Set APP_PASSWORD on the server first, so only you can manage the family pages" });
 };
 
-const OPEN_ASSETS = /^\/(healthz|s\/[a-f0-9]{32}|style\.css|main\.js|shared\.js|favicon\.svg|manifest\.webmanifest|sw\.js|icon-192\.png|icon-512\.png|apple-touch-icon\.png)$/;
+const OPEN_ASSETS = /^\/(healthz|s\/[a-f0-9]{32}|style\.css|main\.js|shared\.js|favicon\.svg|extract\.js|manifest\.webmanifest|sw\.js|icon-192\.png|icon-512\.png|apple-touch-icon\.png)$/;
 const SLUG_PAGE = /^\/([a-z0-9][a-z0-9-]{1,29})$/;
 app.use((req, res, next) => {
   if (req.path.startsWith("/api/") || OPEN_ASSETS.test(req.path)) return next();
@@ -231,49 +232,74 @@ async function initDbWithRetry() {
 }
 
 /* ---------- Scrape ---------- */
-async function scrapeProduct(url) {
+// `hint` holds details read by the person's own browser (see public/extract.js): they win over what
+// the server reads, and when they are complete the shop is not contacted at all.
+async function scrapeProduct(url, hint = {}) {
   const host = normalizeHost(url);
   let title=null, image=null, priceValue=null, priceCurrency=null, description=null, source="heuristics";
+  let wasBlocked = false;
+  const complete = !!(hint.title && hint.price != null);
 
-  // First try fast fetch
-  try {
-    const res = await fetch(url, { headers: BROWSER_HEADERS, redirect: "follow" });
-    if (res.ok) {
-      const html = await res.text();
-      ({ title, image, priceValue, priceCurrency, description } = scrapeWithHeuristics(html, url));
+  // A shop that refuses us answers with an error page; never keep that page's "title" or "picture".
+  const adopt = (found, status) => {
+    if (looksBlocked(status, found.title)) { wasBlocked = true; return false; }
+    ({ title, image, priceValue, priceCurrency, description } = found);
+    return true;
+  };
 
-      // A Shopify shop that answered in another currency (it sees a server in Frankfurt):
-      // ask for the UK storefront and use that answer if it is in pounds.
-      if (priceValue != null && priceCurrency && priceCurrency !== "GBP" && looksLikeShopify(html)) {
-        try {
-          const gb = await fetch(withCountryGB(url), { headers: BROWSER_HEADERS, redirect: "follow" });
-          if (gb.ok) {
-            const again = scrapeWithHeuristics(await gb.text(), url);
-            if (again.priceValue != null && again.priceCurrency === "GBP") {
-              ({ title, image, priceValue, priceCurrency, description } = again);
-            }
-          }
-        } catch {}
-      }
-    }
-  } catch {}
-
-  // Fallback to Playwright render if no price
-  if (priceValue == null) {
+  if (!complete) {
+    // First try fast fetch
     try {
-      const html = await renderHtmlWithPlaywright(url);
-      ({ title, image, priceValue, priceCurrency, description } = scrapeWithHeuristics(html, url));
-      source = "playwright";
+      const res = await fetch(url, { headers: BROWSER_HEADERS, redirect: "follow" });
+      if (res.ok) {
+        const html = await res.text();
+        if (adopt(scrapeWithHeuristics(html, url), res.status)) {
+          // A Shopify shop that answered in another currency (it sees a server in Frankfurt):
+          // ask for the UK storefront and use that answer if it is in pounds.
+          if (priceValue != null && priceCurrency && priceCurrency !== "GBP" && looksLikeShopify(html)) {
+            try {
+              const gb = await fetch(withCountryGB(url), { headers: BROWSER_HEADERS, redirect: "follow" });
+              if (gb.ok) {
+                const again = scrapeWithHeuristics(await gb.text(), url);
+                if (again.priceValue != null && again.priceCurrency === "GBP" && !looksBlocked(gb.status, again.title)) {
+                  ({ title, image, priceValue, priceCurrency, description } = again);
+                }
+              }
+            } catch {}
+          }
+        }
+      } else {
+        wasBlocked = looksBlocked(res.status, "");
+      }
     } catch {}
+
+    // Fallback to a real browser if no price (only where one is installed)
+    if (priceValue == null) {
+      try {
+        const html = await renderHtmlWithPlaywright(url);
+        const found = scrapeWithHeuristics(html, url);
+        if (looksBlocked(200, found.title)) wasBlocked = true;
+        else { ({ title, image, priceValue, priceCurrency, description } = found); source = "playwright"; wasBlocked = false; }
+      } catch {}
+    }
   }
+
+  // Details from the person's own browser win.
+  let usedHint = false;
+  if (hint.title) { title = hint.title; usedHint = true; }
+  if (hint.image) { image = hint.image; usedHint = true; }
+  if (hint.description) { description = hint.description; usedHint = true; }
+  if (hint.price != null) { priceValue = hint.price; priceCurrency = hint.currency || priceCurrency || "GBP"; usedHint = true; }
+  if (usedHint) source = "browser";
 
   // Everything is shown in pounds: convert anything else and keep the original amount.
   const conv = await toGBP(priceValue, priceCurrency);
+  const unread = title == null && priceValue == null && image == null;
 
   return {
     url,
     store: host,
-    title: title || "(No title found)",
+    title: title || null,
     image,
     description: description || null,
     priceValue: conv.value ?? null,
@@ -281,7 +307,9 @@ async function scrapeProduct(url) {
     origValue: conv.orig ? conv.orig.value : null,
     origCurrency: conv.orig ? conv.orig.currency : null,
     lastChecked: new Date().toISOString(),
-    source
+    source,
+    unread,
+    blocked: unread && wasBlocked
   };
 }
 
@@ -548,16 +576,17 @@ app.post("/api/add", async (req, res) => {
       const dup = await findDuplicate(url, req.space);
       if (dup) return duplicateReply(res, dup);
     }
-    const data = await scrapeProduct(url);
+    const data = await scrapeProduct(url, cleanHint(req.body?.hint));
     const id = newId();
     await pool.query(
       `INSERT INTO items (id,url,store,title,image,description,price_value,price_currency,last_checked,source,bought,notes,list_id,orig_value,orig_currency,space)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,false,null,(SELECT id FROM lists WHERE id=$11 AND space=$14),$12,$13,$14)`,
-      [id, data.url, data.store, data.title, data.image, data.description, data.priceValue, data.priceCurrency, data.lastChecked, data.source, req.body?.list_id ?? null, data.origValue, data.origCurrency, req.space]
+      [id, data.url, data.store, data.title || titleFromUrl(url), data.image, data.description, data.priceValue, data.priceCurrency, data.lastChecked, data.blocked ? "blocked" : data.source, req.body?.list_id ?? null, data.origValue, data.origCurrency, req.space]
     );
     await recordPrice(id, data.priceValue, data.priceCurrency);
     const { rows } = await pool.query(`SELECT * FROM items WHERE id=$1`, [id]);
-    res.json(rows[0]);
+    // `lookup` tells the page whether the shop could be read; it is not stored.
+    res.json({ ...rows[0], lookup: { unread: data.unread, blocked: data.blocked } });
   } catch (e) {
     res.status(500).json({ error: e.message || "Scrape failed" });
   }
@@ -660,13 +689,15 @@ async function refreshItem(id, space = null) {
        price_currency=CASE WHEN $12::boolean OR $6::numeric IS NULL THEN price_currency ELSE $7 END,
        orig_value=CASE WHEN $12::boolean OR $6::numeric IS NULL THEN orig_value ELSE $10::numeric END,
        orig_currency=CASE WHEN $12::boolean OR $6::numeric IS NULL THEN orig_currency ELSE $11 END,
-       last_checked=$8, source=$9
+       last_checked=CASE WHEN $14::boolean THEN last_checked ELSE $8 END,
+       source=CASE WHEN $14::boolean THEN source ELSE $9 END
      WHERE id=$1`,
-    [id, data.store, data.title, data.image, data.description, data.priceValue, data.priceCurrency, data.lastChecked, data.source, data.origValue, data.origCurrency, priceLocked, detailsLocked]
+    [id, data.store, data.title, data.image, data.description, data.priceValue, data.priceCurrency, data.lastChecked, data.source, data.origValue, data.origCurrency, priceLocked, detailsLocked, data.unread]
   );
   if (!priceLocked) await recordPrice(id, data.priceValue, data.priceCurrency);
   const { rows: fresh } = await pool.query(`SELECT * FROM items WHERE id=$1`, [id]);
   const item = fresh[0];
+  item.lookup = { unread: data.unread, blocked: data.blocked };
   if (!priceLocked && cur.price_currency === "GBP" && item.price_currency === "GBP" && priceDropped(cur.price_value, item.price_value)) {
     const topic = topicOf(await getSpace(cur.space), cur.space);
     if (topic) {

@@ -132,13 +132,21 @@
     </form>
   </dialog>
 
-  <dialog id="phoneDialog" aria-labelledby="phoneTitle">
+  <dialog id="phoneDialog" aria-labelledby="phoneTitle" class="wide">
     <div class="dlg">
-      <h2 id="phoneTitle">Add presents from your phone</h2>
-      <p><b>Android (Chrome):</b> open this site, tap the menu (three dots) then <b>Install app</b>. After that, on any shop page tap <b>Share</b> and choose <b>Ffi's Presents</b>.</p>
-      <p><b>iPhone:</b> in Safari tap <b>Share</b> then <b>Add to Home Screen</b>. To add from a shop page, make a Shortcut: open the Shortcuts app, tap <b>+</b>, add the action <b>Open URLs</b>, and set its address to the text below followed by the <b>Shortcut Input</b>. In the shortcut's settings turn on <b>Show in Share Sheet</b>.</p>
-      <div class="copyrow"><input id="phoneLink" readonly aria-label="Address for the shortcut"><button type="button" class="btn btn-violet" id="phoneCopy">Copy</button></div>
-      <p><b>On a computer:</b> drag this button to your bookmarks bar, then click it on any shop page: <a id="bookmarklet" class="btn btn-small" href="#">Add to Ffi's Presents</a></p>
+      <h2 id="phoneTitle">Add presents from a shop's page</h2>
+      <p>Some shops (Fat Face, for one) don't let this site read their pages. These ways add a present using your <b>own</b> browser, which the shop doesn't block: they send the name, picture and price you can see.</p>
+      <h3>On a computer</h3>
+      <p>Drag this button to your bookmarks bar. On any shop page, click it:</p>
+      <p><a id="bookmarklet" class="btn btn-small" href="#">Add to Ffi's Presents</a></p>
+      <h3>iPhone</h3>
+      <p>In Safari tap <b>Share</b> then <b>Add to Home Screen</b> for the app. To add from a shop page, make a Shortcut: open the Shortcuts app, tap <b>+</b> and turn on <b>Show in Share Sheet</b> (for Safari web pages). Add the action <b>Run JavaScript on Web Page</b> and paste the script below into it, then add <b>Open URLs</b> after it.</p>
+      <div class="dlg-actions" style="justify-content:flex-start"><button type="button" class="btn btn-violet" id="scriptCopy">Copy the script</button></div>
+      <h3>Android (Chrome)</h3>
+      <p>Open this site, tap the menu (three dots) then <b>Install app</b>. Then on any shop page tap <b>Share</b> and choose <b>Ffi's Presents</b>. This sends only the link, so if the shop blocks this site you'll need to press <b>Edit</b> to add the price and photo.</p>
+      <h3>Just the link</h3>
+      <p>Anything that opens this address followed by a link will add it:</p>
+      <div class="copyrow"><input id="phoneLink" readonly aria-label="Address for the shortcut"><button type="button" class="btn" id="phoneCopy">Copy</button></div>
       <div class="dlg-actions"><button type="button" class="btn" id="phoneClose">Close</button></div>
     </div>
   </dialog>
@@ -190,6 +198,7 @@
   </dialog>
 
   <canvas id="confetti" aria-hidden="true"></canvas>
+  <script src="/extract.js"></script>
   <script src="/main.js"></script>
 </body>
 </html>

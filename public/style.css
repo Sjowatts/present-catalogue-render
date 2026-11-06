@@ -212,3 +212,6 @@ dialog.wide { width:min(640px, calc(100vw - 32px)) }
 .dlg textarea { padding:10px 14px; border-radius:12px; border:1px solid var(--border-strong); background:var(--inset); color:var(--text); font:400 16px var(--body); resize:vertical }
 
 body.locked main, body.locked .topbar-actions { visibility:hidden }
+
+.status.warn { color:var(--warm) }
+.warnnote { color:var(--warm) }

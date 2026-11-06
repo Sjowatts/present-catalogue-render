@@ -525,6 +525,7 @@ $("phoneBtn").onclick = openPhoneDialog;
 $("phoneClose").onclick = () => $("phoneDialog").close();
 $("bookmarklet").addEventListener("click", (e) => e.preventDefault());
 $("scriptCopy").onclick = (e) => copyText(shortcutScript(), e.target);
+$("bookmarkletCopy").onclick = (e) => copyText(bookmarkletHref(), e.target);
 $("phoneCopy").onclick = async (e) => {
   try { await navigator.clipboard.writeText($("phoneLink").value); e.target.textContent = "Copied"; }
   catch { $("phoneLink").select(); e.target.textContent = "Press Cmd+C"; }

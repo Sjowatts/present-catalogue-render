@@ -8,7 +8,7 @@ dotenv.config();
 import fetch from "node-fetch";
 import { scrapeWithHeuristics, parsePriceString } from "./lib/heuristics.js";
 import { extractUrl, cleanUrl, urlKey } from "./lib/links.js";
-import { sendAlert, priceDropped, dropMessage } from "./lib/alerts.js";
+import { sendAlert, priceDropped, dropMessage, priceRose, riseMessage, claimMessage } from "./lib/alerts.js";
 import {
   isUsableSlug, uniqueSlug, possessive, generatePin, hashPin, verifyPin, signToken, verifyToken,
   parseCookies, makeRateLimiter, parseNames, SLUG_RE, RESERVED
@@ -699,10 +699,12 @@ async function refreshItem(id, space = null) {
   const { rows: fresh } = await pool.query(`SELECT * FROM items WHERE id=$1`, [id]);
   const item = fresh[0];
   item.lookup = { unread: data.unread, blocked: data.blocked };
-  if (!priceLocked && cur.price_currency === "GBP" && item.price_currency === "GBP" && priceDropped(cur.price_value, item.price_value)) {
-    const topic = topicOf(await getSpace(cur.space), cur.space);
+  if (!priceLocked && cur.price_currency === "GBP" && item.price_currency === "GBP") {
+    const msg = priceDropped(cur.price_value, item.price_value) ? dropMessage(item, cur.price_value, item.price_value)
+      : priceRose(cur.price_value, item.price_value) ? riseMessage(item, cur.price_value, item.price_value) : null;
+    const topic = msg && topicOf(await getSpace(cur.space), cur.space);
     if (topic) {
-      const r = await sendAlert({ ...dropMessage(item, cur.price_value, item.price_value), topic });
+      const r = await sendAlert({ ...msg, topic });
       if (!r.sent) console.error("Price alert not sent:", r.reason);
     }
   }
@@ -758,7 +760,7 @@ app.post("/api/alerts/test", async (req, res) => {
   const topic = topicOf(await getSpace(req.space), req.space);
   if (!topic) return res.status(400).json({ error: "Alerts aren't switched on yet. Save a topic name first." });
   const sp = await getSpace(req.space);
-  const r = await sendAlert({ topic, title: possessive(sp?.name || "Ffi") + " Presents test", message: "If you can read this, price-drop alerts are working.", tags: ["white_check_mark"] });
+  const r = await sendAlert({ topic, title: possessive(sp?.name || "Ffi") + " Presents test", message: "If you can read this, notifications are working.", tags: ["white_check_mark"] });
   if (!r.sent) return res.status(502).json({ error: "Couldn't send the alert: " + r.reason });
   res.json({ ok: true });
 });
@@ -819,6 +821,17 @@ async function claimItem(req, res, scopeSql, scopeArgs) {
     await pool.query(`UPDATE items SET claimed_by=$2 WHERE id=$1`, [rows[0].id, name]);
   }
   res.json({ ok: true });
+  // Tell the page's own phone (after answering, and only when something actually changed).
+  const claimed = req.body?.claim !== false;
+  if (claimed ? owner : !owner) return; // ticking again, or unticking something nobody had: nothing changed
+  try {
+    const { rows: [it] } = await pool.query(`SELECT space, title, url FROM items WHERE id=$1`, [rows[0].id]);
+    const topic = it && topicOf(await getSpace(it.space), it.space);
+    if (topic) {
+      const r = await sendAlert({ ...claimMessage(it, name, claimed), topic });
+      if (!r.sent) console.error("Claim alert not sent:", r.reason);
+    }
+  } catch (e) { console.error("Claim alert failed:", e.message); }
 }
 
 app.post("/api/share/:token/claim", async (req, res) => {

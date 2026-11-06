@@ -603,7 +603,8 @@ async function openAlertsDialog() {
   let enabled = false;
   try { enabled = (await api("/api/alerts/status")).enabled; } catch {}
   const showOn = () => {
-    $("alertsBody").innerHTML = "<p><b>Alerts are on.</b> You'll get a notification on your phone when a price falls by 2% or more.</p>" +
+    $("alertsBody").innerHTML = "<p><b>Notifications are on.</b> You'll get one on your phone when:</p><ul><li>a price goes down or up by 2% or more, and</li><li>someone ticks <b>I’ll get this</b> on a shared link (or changes their mind).</li></ul>" +
+      "<p>Heads up: the “getting this” messages tell whoever has this topic who is buying what. If this list is for someone who shouldn’t find out, only subscribe on your own phone.</p>" +
       "<p>Prices are only checked when you press <b>Refresh prices</b>, unless the daily automatic check is set up.</p>" +
       '<div class="dlg-actions"><button type="button" class="btn" id="alertOff">Turn off</button><button type="button" class="btn btn-violet" id="alertTest">Send a test alert</button></div><p class="status" id="alertMsg" role="status"></p>';
     $("alertTest").onclick = async () => {
@@ -621,12 +622,12 @@ async function openAlertsDialog() {
   };
   const showOff = () => {
     const topic = randomTopic();
-    $("alertsBody").innerHTML = "<p>Get a notification on your phone when a price drops. It's free and needs no account.</p><ol>" +
+    $("alertsBody").innerHTML = "<p>Get a notification on your phone when a price changes or someone says they’ll get a present. It's free and needs no account.</p><ol>" +
       "<li>Install the free <b>ntfy</b> app on your phone, tap <b>+</b>, and subscribe to this secret topic name:</li>" +
       '<li><div class="copyrow"><input id="topicBox" value="' + esc(topic) + '" aria-label="Secret topic name" maxlength="64"><button type="button" class="btn" id="topicCopy">Copy</button></div></li>' +
-      "<li>Press <b>Turn on alerts</b> below, then send yourself a test.</li></ol>" +
+      "<li>Press <b>Turn on notifications</b> below, then send yourself a test.</li></ol>" +
       "<p>Keep the topic name private: anyone who knows it can read your alerts. To check prices every day on their own, the daily price check also needs to be switched on.</p>" +
-      '<div class="dlg-actions"><button type="button" class="btn btn-violet" id="topicSave">Turn on alerts</button></div><p class="status" id="alertMsg" role="status"></p>';
+      '<div class="dlg-actions"><button type="button" class="btn btn-violet" id="topicSave">Turn on notifications</button></div><p class="status" id="alertMsg" role="status"></p>';
     $("topicCopy").onclick = async (e) => {
       try { await navigator.clipboard.writeText($("topicBox").value); e.target.textContent = "Copied"; }
       catch { $("topicBox").select(); e.target.textContent = "Press Cmd+C"; }

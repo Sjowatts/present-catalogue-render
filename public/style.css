@@ -222,3 +222,6 @@ body.locked main, body.locked .topbar-actions { visibility:hidden }
 .chip-person { min-height:34px; padding:0 14px; font-size:13px; text-decoration:none; color:var(--text-soft) }
 .chip-person:hover { color:var(--text) }
 .chip-person[aria-current="page"] { background:var(--surface-2); border-color:var(--accent); color:var(--text); font-weight:600 }
+
+.sections { display:flex; flex-direction:column; gap:32px }
+.share-section { margin:0 0 14px; font:600 20px var(--display); letter-spacing:-.01em; color:var(--text) }

@@ -46,3 +46,7 @@ a new PIN) and then import.
 - A wrong PIN eight times in ten minutes locks that page for a few minutes (the owner's **New PIN** clears it).
 - PINs are stored scrambled, so not even you can read them; only replace them.
 - All pages share one database and one server, so nothing extra is needed beyond what you already have.
+
+## Share everything
+
+On any page, **Share everything** makes one private link (`/w/<code>`) covering that person's whole page: every list, with pictures, prices and working product links. Anyone with the link can look and tick "I'll get this", but can't change anything and never sees notes or other people's pages. "Stop sharing" kills the link; making a new one gives a different address. Deleting a person's page also kills its link. (Each list still has its own single-list link from its **Share** button.)

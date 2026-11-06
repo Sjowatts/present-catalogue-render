@@ -1,5 +1,8 @@
 const $ = (id) => document.getElementById(id);
 const token = location.pathname.split("/").pop();
+const WHOLE = location.pathname.startsWith("/w/"); // /w/<token> shares a whole page, /s/<token> one list
+const API = (WHOLE ? "/api/pageshare/" : "/api/share/") + encodeURIComponent(token);
+let lists = [];
 const COLORS = ["#c8a96a", "#8aa6c9", "#7fb59d", "#c98f7a", "#a79bc4", "#8d939e"];
 let items = [];
 
@@ -39,31 +42,65 @@ function cardHtml(it, i) {
     action + "</div>";
 }
 
-function render() {
-  const grid = $("list");
-  grid.innerHTML = "";
-  items.forEach((it, i) => {
+function fill(grid, group, offset) {
+  group.forEach((it, i) => {
     const card = document.createElement("article");
     card.className = "card" + (it.bought ? " is-bought" : "");
-    card.style.setProperty("--c", COLORS[i % COLORS.length]);
-    card.innerHTML = cardHtml(it, i);
+    card.style.setProperty("--c", COLORS[(i + offset) % COLORS.length]);
+    card.innerHTML = cardHtml(it, i + offset);
     grid.appendChild(card);
+  });
+}
+
+function render() {
+  const root = $("list");
+  root.innerHTML = "";
+  if (!WHOLE) {
+    root.className = "grid";
+    fill(root, items, 0);
+    if (!items.length) {
+      const tile = document.createElement("div");
+      tile.className = "add-tile";
+      tile.innerHTML = "<p>Nothing on this list yet.</p>";
+      root.appendChild(tile);
+    }
+    return;
+  }
+  // Whole page: one titled section per list, then anything not in a list.
+  root.className = "sections";
+  const groups = lists.map((l) => ({ name: l.name, items: items.filter((it) => it.list_id === l.id) }));
+  const known = new Set(lists.map((l) => l.id));
+  groups.push({ name: lists.length ? "Other presents" : "Presents", items: items.filter((it) => !known.has(it.list_id)) });
+  let offset = 0;
+  groups.filter((g) => g.items.length).forEach((g) => {
+    const sec = document.createElement("section");
+    const h = document.createElement("h3");
+    h.className = "share-section";
+    h.textContent = g.name;
+    const grid = document.createElement("div");
+    grid.className = "grid";
+    fill(grid, g.items, offset);
+    offset += g.items.length;
+    sec.append(h, grid);
+    root.appendChild(sec);
   });
   if (!items.length) {
     const tile = document.createElement("div");
     tile.className = "add-tile";
-    tile.innerHTML = "<p>Nothing on this list yet.</p>";
-    grid.appendChild(tile);
+    tile.innerHTML = "<p>Nothing here yet.</p>";
+    root.appendChild(tile);
   }
 }
 
 async function load() {
   try {
-    const res = await fetch("/api/share/" + encodeURIComponent(token));
+    const res = await fetch(API);
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || "This link isn't working");
-    $("listName").textContent = data.list.name;
-    document.title = data.list.name + " · Ffi's Presents";
+    const title = WHOLE ? data.title : data.list.name;
+    $("listName").textContent = title;
+    document.title = title + (WHOLE ? "" : " · Ffi's Presents");
+    lists = data.lists || [];
     $("intro").textContent = "Pick something to get, and tick “I’ll get this” so nobody buys the same present twice.";
     $("whoami").hidden = false;
     items = data.items;
@@ -81,7 +118,7 @@ $("list").addEventListener("click", async (e) => {
   if (!name) { say("Add your name at the top first.", true); $("myName").focus(); return; }
   btn.disabled = true;
   try {
-    const res = await fetch("/api/share/" + encodeURIComponent(token) + "/claim", {
+    const res = await fetch(API + "/claim", {
       method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({ itemId: btn.dataset.id, name, claim: btn.dataset.claim === "true" })
     });

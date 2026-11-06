@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Ffi's Presents</title>
+<title>Present Catalogue</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap">
@@ -14,7 +14,7 @@
 <meta name="theme-color" content="#0e0f12">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Presents">
+<meta name="apple-mobile-web-app-title" content="Presents" id="appTitle">
 </head>
 <body>
   <div class="ribbon" aria-hidden="true"></div>
@@ -23,7 +23,10 @@
       <span class="brand-icon" aria-hidden="true">
         <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="5" rx="1"/><path d="M12 8v13M5 13v7a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-7"/><path d="M12 8C10.5 4 6 4 6 6.5S9 8 12 8Zm0 0c1.5-4 6-4 6-1.5S15 8 12 8Z"/></svg>
       </span>
-      <h1 id="siteTitle">Ffi's Presents</h1>
+      <div class="brand-text">
+        <h1 id="siteTitle">Present Catalogue</h1>
+        <p class="whose" id="whose" hidden></p>
+      </div>
     </div>
     <div class="topbar-actions">
       <button type="button" class="btn" id="familyBtn" hidden>Family</button>
@@ -140,14 +143,14 @@
       <p>Some shops (Fat Face, for one) don't let this site read their pages. These ways add a present using your <b>own</b> browser, which the shop doesn't block: they send the name, picture and price you can see.</p>
       <h3>On a computer</h3>
       <p>In Safari first choose <b>View → Show Favorites Bar</b> (in Chrome: <b>View → Always Show Bookmarks Bar</b>). Then drag this button <b>onto that bar</b>, not onto the address field or the tabs. On any shop page, click the bookmark you made:</p>
-      <p><a id="bookmarklet" class="btn btn-small" href="#">Add to Ffi's Presents</a></p>
+      <p><a id="bookmarklet" class="btn btn-small" href="#">Add to Present Catalogue</a></p>
       <p>Dragging won't work? Bookmark any page (<b>⌘D</b>), right-click that bookmark, choose <b>Edit Address</b>, delete what's there and paste this in:</p>
       <div class="dlg-actions" style="justify-content:flex-start"><button type="button" class="btn btn-small" id="bookmarkletCopy">Copy as text</button></div>
       <h3>iPhone</h3>
       <p>In Safari tap <b>Share</b> then <b>Add to Home Screen</b> for the app. To add from a shop page, make a Shortcut: open the Shortcuts app, tap <b>+</b> and turn on <b>Show in Share Sheet</b> (for Safari web pages). Add the action <b>Run JavaScript on Web Page</b> and paste the script below into it, then add <b>Open URLs</b> after it.</p>
       <div class="dlg-actions" style="justify-content:flex-start"><button type="button" class="btn btn-violet" id="scriptCopy">Copy the script</button></div>
       <h3>Android (Chrome)</h3>
-      <p>Open this site, tap the menu (three dots) then <b>Install app</b>. Then on any shop page tap <b>Share</b> and choose <b>Ffi's Presents</b>. This sends only the link, so if the shop blocks this site you'll need to press <b>Edit</b> to add the price and photo.</p>
+      <p>Open this site, tap the menu (three dots) then <b>Install app</b>. Then on any shop page tap <b>Share</b> and choose this app (it's named after the person whose page you installed it from). This sends only the link, so if the shop blocks this site you'll need to press <b>Edit</b> to add the price and photo.</p>
       <h3>Just the link</h3>
       <p>Anything that opens this address followed by a link will add it:</p>
       <div class="copyrow"><input id="phoneLink" readonly aria-label="Address for the shortcut"><button type="button" class="btn" id="phoneCopy">Copy</button></div>

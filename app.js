@@ -56,7 +56,7 @@ const basicOk = (req) => {
 };
 const adminOk = (req) => basicOk(req);
 const rootOk = (req) => !process.env.APP_PASSWORD || basicOk(req);
-const challenge = (res) => { res.setHeader("WWW-Authenticate", 'Basic realm="Ffi\'s Presents"'); res.status(401).send("Password needed"); };
+const challenge = (res) => { res.setHeader("WWW-Authenticate", 'Basic realm="Present Catalogue"'); res.status(401).send("Password needed"); };
 
 // Managing the family pages is for the owner (APP_PASSWORD) only.
 const needAdmin = (req, res, next) => {
@@ -862,7 +862,7 @@ app.get("/api/pageshare/:token", async (req, res) => {
   const lists = (await pool.query(`SELECT id, name FROM lists WHERE space=$1 ORDER BY created_at, id`, [share.space])).rows;
   const items = (await pool.query(
     `SELECT ${SHARE_ITEM_COLUMNS} FROM items WHERE space=$1 ORDER BY favourite DESC, created_at DESC, id DESC`, [share.space])).rows;
-  res.json({ title: possessive(sp?.name || "Ffi") + " Presents", lists, items });
+  res.json({ title: sp?.name || "Ffi", lists, items });
 });
 
 app.post("/api/pageshare/:token/claim", async (req, res) => {
@@ -919,7 +919,7 @@ app.get("/api/manifest/:slug", async (req, res) => {
   const row = SLUG_RE.test(req.params.slug) ? await getSpace(req.params.slug) : null;
   if (!row || !row.slug) return res.status(404).json({ error: "Not found" });
   res.type("application/manifest+json").json({
-    id: "/" + row.slug, name: possessive(row.name) + " Presents", short_name: row.name,
+    id: "/" + row.slug, name: row.name, short_name: row.name,
     description: "A gift list with prices, budgets and shareable lists",
     start_url: "/" + row.slug, scope: "/", display: "standalone", background_color: "#0e0f12", theme_color: "#0e0f12",
     icons: [

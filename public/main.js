@@ -754,6 +754,7 @@ async function boot() {
   $("whose").hidden = false;
   document.title = info.name + " · Present Catalogue";
   $("appTitle").content = info.name;
+  $("bookmarklet").textContent = "Add " + info.name; // the bookmark takes its name from this button
   $("familyBtn").hidden = !!SPACE;
   $("pinBtn").hidden = !SPACE; $("lockBtn").hidden = !SPACE;
   if (shared) afterSignIn = () => addItem({ url: shared.url, hint: shared.hint });

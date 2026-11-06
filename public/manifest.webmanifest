@@ -1,6 +1,6 @@
 {
-  "name": "Ffi's Presents",
-  "short_name": "Presents",
+  "name": "Present Catalogue",
+  "short_name": "Catalogue",
   "description": "A gift list with prices, budgets and shareable lists",
   "start_url": "/",
   "scope": "/",

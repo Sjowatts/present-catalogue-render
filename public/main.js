@@ -7,7 +7,6 @@ window.fetch = (input, init = {}) => {
   if (typeof input === "string" && input.startsWith("/api/")) init = { ...init, headers: { ...(init.headers || {}), "X-Space": SPACE } };
   return nativeFetch(input, init);
 };
-const possessive = (name) => (/s$/i.test(name) ? name + "'" : name + "'s");
 const COLORS = ["#c8a96a", "#8aa6c9", "#7fb59d", "#c98f7a", "#a79bc4", "#8d939e"];
 
 let items = [], lists = [];
@@ -242,7 +241,7 @@ async function renderPeople() {
   if (!people.length) { box.hidden = true; return; }
   const here = (slug) => (slug === SPACE ? ' aria-current="page"' : "");
   box.innerHTML = '<span class="eyebrow">Family</span>' +
-    '<a class="chip chip-person" href="/"' + (SPACE ? "" : ' aria-current="page"') + ">Ffi’s Presents</a>" +
+    '<a class="chip chip-person" href="/"' + (SPACE ? "" : ' aria-current="page"') + ">Ffi</a>" +
     people.map((x) => '<a class="chip chip-person" href="/' + esc(x.slug) + '"' + here(x.slug) + ">" + esc(x.name) + "</a>").join("");
   box.hidden = false;
 }
@@ -744,15 +743,16 @@ $("exportLink").href = "/api/export?space=" + encodeURIComponent(SPACE);
 async function boot() {
   const shared = takeSharedLink();
   if (SPACE) {
-    $("siteTitle").textContent = "";
     $("manifestLink").href = "/api/manifest/" + SPACE;
   }
   let info;
   try { info = await api("/api/space-info"); }
   catch (e) { if (e.status === 404) { showMissing(); return; } info = { name: "Ffi", root: !SPACE }; }
-  const title = possessive(info.name) + " Presents";
-  $("siteTitle").textContent = title;
-  document.title = title;
+  // The site is always "Present Catalogue"; under it, just the person's name.
+  $("whose").textContent = info.name;
+  $("whose").hidden = false;
+  document.title = info.name + " · Present Catalogue";
+  $("appTitle").content = info.name;
   $("familyBtn").hidden = !!SPACE;
   $("pinBtn").hidden = !SPACE; $("lockBtn").hidden = !SPACE;
   if (shared) afterSignIn = () => addItem({ url: shared.url, hint: shared.hint });

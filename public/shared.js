@@ -99,7 +99,7 @@ async function load() {
     if (!res.ok) throw new Error(data.error || "This link isn't working");
     const title = WHOLE ? data.title : data.list.name;
     $("listName").textContent = title;
-    document.title = title + (WHOLE ? "" : " · Ffi's Presents");
+    document.title = title + " · Present Catalogue";
     lists = data.lists || [];
     $("intro").textContent = "Pick something to get, and tick “I’ll get this” so nobody buys the same present twice.";
     $("whoami").hidden = false;

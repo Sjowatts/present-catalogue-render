@@ -111,7 +111,8 @@ test("creating pages, opening them, PIN login and sign-out", { skip: !hasDb }, a
   const manifest = await (await fetch(s.base + "/api/manifest/" + mum.slug)).json();
   assert.equal(manifest.start_url, "/" + mum.slug);
   assert.equal(manifest.share_target.action, "/" + mum.slug);
-  assert.match(manifest.name, /^Mum\w+'s? Presents$/);
+  assert.match(manifest.name, /^Mum\w+$/);
+  assert.equal(manifest.short_name, manifest.name);
   assert.equal((await fetch(s.base + "/api/manifest/nobody-here")).status, 404);
   assert.equal((await fetch(s.base + "/api/manifest/")).status, 401); // not a manifest address, so it falls under the normal rules
 
@@ -413,7 +414,7 @@ test("share everything: one link per person, only that person's presents, claim 
   // no PIN needed to look; shows only Mum's lists and presents, no notes
   const anon = (p, body) => fetch(s.base + p, { method: body ? "POST" : "GET", headers: { "content-type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
   const view = await (await anon("/api/pageshare/" + token)).json();
-  assert.match(view.title, /^Mum/);
+  assert.equal(view.title, mum.name);
   assert.deepEqual(view.items.map((i) => i.title).sort(), ["Mum book", "Mum scarf"]);
   assert.deepEqual(view.lists.map((l) => l.name), ["Birthday"]);
   assert.ok(view.items.every((i) => !("notes" in i)));

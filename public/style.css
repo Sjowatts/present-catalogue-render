@@ -225,3 +225,6 @@ body.locked main, body.locked .topbar-actions { visibility:hidden }
 
 .sections { display:flex; flex-direction:column; gap:32px }
 .share-section { margin:0 0 14px; font:600 20px var(--display); letter-spacing:-.01em; color:var(--text) }
+
+.brand-text { display:flex; flex-direction:column; gap:2px; min-width:0 }
+.whose { margin:0; font:500 14px var(--body); color:var(--accent); letter-spacing:.01em }

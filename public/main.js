@@ -1,10 +1,20 @@
 const $ = (id) => document.getElementById(id);
+
+// "/" is the owner's own site; "/mum" is Mum's private page. Every data request says which one it is for.
+const SPACE = (location.pathname.match(/^\/([a-z0-9][a-z0-9-]{1,29})\/?$/) || [])[1] || "";
+const nativeFetch = window.fetch.bind(window);
+window.fetch = (input, init = {}) => {
+  if (typeof input === "string" && input.startsWith("/api/")) init = { ...init, headers: { ...(init.headers || {}), "X-Space": SPACE } };
+  return nativeFetch(input, init);
+};
+const possessive = (name) => (/s$/i.test(name) ? name + "'" : name + "'s");
 const COLORS = ["#ff5c97", "#2ee6a8", "#5ec8ff", "#ff8a3d", "#b69bff", "#ffd23f"];
 
 let items = [], lists = [];
 const prefs = { list: "all", filter: "all", sort: "new", q: "" };
-try { Object.assign(prefs, JSON.parse(localStorage.getItem("ffis-prefs") || "{}"), { q: "" }); } catch {}
-const savePrefs = () => { try { localStorage.setItem("ffis-prefs", JSON.stringify(prefs)); } catch {} };
+const PREFS_KEY = "ffis-prefs" + (SPACE ? "-" + SPACE : "");
+try { Object.assign(prefs, JSON.parse(localStorage.getItem(PREFS_KEY) || "{}"), { q: "" }); } catch {}
+const savePrefs = () => { try { localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)); } catch {} };
 
 /* ---------- helpers ---------- */
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
@@ -223,7 +233,12 @@ async function load() {
   try {
     [items, lists] = await Promise.all([api("/api/items"), api("/api/lists")]);
     render();
-  } catch (e) { say(e.message, true); }
+    return true;
+  } catch (e) {
+    if (e.status === 401 && e.data && e.data.code === "pin_required") showLogin();
+    else say(e.message, true);
+    return false;
+  }
 }
 
 /* ---------- confetti ---------- */
@@ -483,7 +498,7 @@ $("itemForm").addEventListener("submit", async (e) => {
 
 /* ---------- add from phone ---------- */
 function openPhoneDialog() {
-  const base = location.origin + "/?add=";
+  const base = location.origin + (SPACE ? "/" + SPACE : "/") + "?add=";
   $("phoneLink").value = base;
   $("bookmarklet").href = "javascript:(function(){location.href=" + JSON.stringify(base) + "+encodeURIComponent(location.href)})()";
   $("phoneDialog").showModal();
@@ -517,33 +532,159 @@ async function openAlertsDialog() {
   $("alertsDialog").showModal();
   let enabled = false;
   try { enabled = (await api("/api/alerts/status")).enabled; } catch {}
-  if (enabled) {
+  const showOn = () => {
     $("alertsBody").innerHTML = "<p><b>Alerts are on.</b> You'll get a notification on your phone when a price falls by 2% or more.</p>" +
-      '<p>Prices are only checked when you press <b>Refresh prices</b>, unless the daily automatic check is set up.</p>' +
-      '<div class="dlg-actions"><button type="button" class="btn btn-violet" id="alertTest">Send a test alert</button></div><p class="status" id="alertMsg" role="status"></p>';
+      "<p>Prices are only checked when you press <b>Refresh prices</b>, unless the daily automatic check is set up.</p>" +
+      '<div class="dlg-actions"><button type="button" class="btn" id="alertOff">Turn off</button><button type="button" class="btn btn-violet" id="alertTest">Send a test alert</button></div><p class="status" id="alertMsg" role="status"></p>';
     $("alertTest").onclick = async () => {
       $("alertMsg").classList.remove("error"); $("alertMsg").textContent = "Sending…";
       try { await send("/api/alerts/test", {}); $("alertMsg").textContent = "Sent. Check your phone."; }
       catch (e) { $("alertMsg").classList.add("error"); $("alertMsg").textContent = e.message; }
     };
-  } else {
+    $("alertOff").onclick = async () => {
+      try {
+        const r = await send("/api/alerts/topic", { topic: "" });
+        if (r.enabled) { $("alertMsg").classList.add("error"); $("alertMsg").textContent = "This is set on the server, so it can't be turned off here."; }
+        else showOff();
+      } catch (e) { $("alertMsg").classList.add("error"); $("alertMsg").textContent = e.message; }
+    };
+  };
+  const showOff = () => {
     const topic = randomTopic();
     $("alertsBody").innerHTML = "<p>Get a notification on your phone when a price drops. It's free and needs no account.</p><ol>" +
-      "<li>Install the free <b>ntfy</b> app on your phone and subscribe to this secret topic name: <div class=\"copyrow\" style=\"margin-top:8px\"><input id=\"topicBox\" readonly value=\"" + esc(topic) + "\" aria-label=\"Secret topic name\"><button type=\"button\" class=\"btn btn-violet\" id=\"topicCopy\">Copy</button></div></li>" +
-      "<li>In Render, open this service, then <b>Environment</b>, and add a variable named <code>NTFY_TOPIC</code> with that same value. Save and let it redeploy.</li>" +
-      "<li>Come back here and press <b>Price alerts</b> again to send a test.</li></ol>" +
-      "<p>Keep the topic name private: anyone who knows it can read your alerts. To check prices every day on their own, the daily price check also needs to be switched on.</p>";
+      "<li>Install the free <b>ntfy</b> app on your phone, tap <b>+</b>, and subscribe to this secret topic name:</li>" +
+      '<li><div class="copyrow"><input id="topicBox" value="' + esc(topic) + '" aria-label="Secret topic name" maxlength="64"><button type="button" class="btn" id="topicCopy">Copy</button></div></li>' +
+      "<li>Press <b>Turn on alerts</b> below, then send yourself a test.</li></ol>" +
+      "<p>Keep the topic name private: anyone who knows it can read your alerts. To check prices every day on their own, the daily price check also needs to be switched on.</p>" +
+      '<div class="dlg-actions"><button type="button" class="btn btn-violet" id="topicSave">Turn on alerts</button></div><p class="status" id="alertMsg" role="status"></p>';
     $("topicCopy").onclick = async (e) => {
       try { await navigator.clipboard.writeText($("topicBox").value); e.target.textContent = "Copied"; }
       catch { $("topicBox").select(); e.target.textContent = "Press Cmd+C"; }
     };
-  }
+    $("topicSave").onclick = async () => {
+      try { await send("/api/alerts/topic", { topic: $("topicBox").value }); showOn(); }
+      catch (e) { $("alertMsg").classList.add("error"); $("alertMsg").textContent = e.message; }
+    };
+  };
+  if (enabled) showOn(); else showOff();
 }
 $("alertsBtn").onclick = openAlertsDialog;
 $("alertsClose").onclick = () => $("alertsDialog").close();
 
+/* ---------- private pages: PIN, family, change PIN ---------- */
+let afterSignIn = null; // something to do once the PIN is accepted (e.g. a link that was shared in)
+
+function showLogin() {
+  document.body.classList.add("locked");
+  if ($("loginDialog").open) return;
+  $("loginForm").hidden = false; $("loginMissing").hidden = true;
+  $("loginTitle").textContent = $("siteTitle").textContent || "Enter your PIN";
+  $("loginError").textContent = ""; $("loginPin").value = "";
+  $("loginDialog").showModal();
+  $("loginPin").focus();
+}
+function showMissing() {
+  document.body.classList.add("locked");
+  $("siteTitle").textContent = "Page not found";
+  $("loginForm").hidden = true; $("loginMissing").hidden = false;
+  $("loginTitle").textContent = "This page isn't here";
+  $("loginDialog").showModal();
+}
+$("loginDialog").addEventListener("cancel", (e) => e.preventDefault()); // there is nothing to see until the PIN is right
+$("loginForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const btn = $("loginGo"); btn.disabled = true; $("loginError").textContent = "";
+  try {
+    await send("/api/space-login", { space: SPACE, pin: $("loginPin").value });
+    $("loginDialog").close();
+    document.body.classList.remove("locked");
+    if (await load() && afterSignIn) { const f = afterSignIn; afterSignIn = null; f(); }
+  } catch (err) { $("loginError").textContent = err.message; $("loginPin").select(); }
+  btn.disabled = false;
+});
+
+$("lockBtn").onclick = async () => { try { await send("/api/space-logout", { space: SPACE }); } catch {} location.reload(); };
+
+$("pinBtn").onclick = () => { $("newPin").value = ""; $("pinError").textContent = ""; $("pinDialog").showModal(); $("newPin").focus(); };
+$("pinCancel").onclick = () => $("pinDialog").close();
+$("pinForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  try { await send("/api/space-pin", { pin: $("newPin").value }); $("pinDialog").close(); say("Your PIN has been changed."); }
+  catch (err) { $("pinError").textContent = err.message; }
+});
+
+// The owner's page for creating and looking after everyone's pages.
+const pageLink = (slug) => location.origin + "/" + slug;
+const messageFor = (name, slug, pin) => "Hi " + name + "! Here's your own gift list: " + pageLink(slug) + "\nYour PIN is " + pin + " (you can change it once you're in).";
+async function copyText(text, btn) {
+  try { await navigator.clipboard.writeText(text); btn.textContent = "Copied"; }
+  catch { btn.textContent = "Press Cmd+C"; window.prompt("Copy this:", text); }
+}
+function renderPins(rows) {
+  const box = $("familyResults");
+  if (!rows.length) { box.innerHTML = ""; return; }
+  box.innerHTML = "<h3>Send these now</h3><p>The PINs are shown only this once. Copy each message and send it to that person.</p>" +
+    rows.map((r, i) => '<div class="pinrow"><div><b>' + esc(r.name) + '</b><br><span class="muted">' + esc(pageLink(r.slug)) + " &middot; PIN <b>" + esc(r.pin) + '</b></span></div>' +
+      '<button type="button" class="btn btn-small" data-copy="' + i + '">Copy message</button></div>').join("") +
+    '<div class="dlg-actions"><button type="button" class="btn btn-violet" id="copyAll">Copy all messages</button></div>';
+  box.querySelectorAll("[data-copy]").forEach((b) => (b.onclick = () => { const r = rows[Number(b.dataset.copy)]; copyText(messageFor(r.name, r.slug, r.pin), b); }));
+  $("copyAll").onclick = (e) => copyText(rows.map((r) => messageFor(r.name, r.slug, r.pin)).join("\n\n"), e.target);
+}
+async function renderFamily() {
+  let spaces;
+  try { spaces = await api("/api/spaces"); }
+  catch (e) {
+    $("familyForm").hidden = true; $("familyList").innerHTML = "";
+    $("familyError").textContent = e.message; return;
+  }
+  $("familyForm").hidden = false; $("familyError").textContent = "";
+  $("familyList").innerHTML = spaces.length ? "<h3>Pages</h3>" + spaces.map((s) =>
+    '<div class="pinrow"><div><b>' + esc(s.name) + '</b><br><span class="muted">' + esc(pageLink(s.slug)) + " &middot; " + s.presents + (s.presents === 1 ? " present" : " presents") + '</span></div>' +
+    '<div class="btn-group"><button type="button" class="btn btn-small" data-reset="' + esc(s.slug) + '">New PIN</button>' +
+    '<button type="button" class="btn btn-small btn-danger" data-delete="' + esc(s.slug) + '" data-name="' + esc(s.name) + '" data-n="' + s.presents + '">Delete</button></div></div>').join("") : "";
+  $("familyList").querySelectorAll("[data-reset]").forEach((b) => (b.onclick = async () => {
+    if (!confirm("Make a new PIN? The old one will stop working.")) return;
+    try { const r = await send("/api/spaces/" + b.dataset.reset + "/reset-pin", {}); renderPins([r]); } catch (e) { $("familyError").textContent = e.message; }
+  }));
+  $("familyList").querySelectorAll("[data-delete]").forEach((b) => (b.onclick = async () => {
+    const n = Number(b.dataset.n);
+    if (!confirm("Delete " + b.dataset.name + "'s page" + (n ? " and all " + n + " presents in it" : "") + "? This can't be undone.")) return;
+    try { await api("/api/spaces/" + b.dataset.delete + "?confirm=" + encodeURIComponent(b.dataset.delete), { method: "DELETE" }); renderFamily(); } catch (e) { $("familyError").textContent = e.message; }
+  }));
+}
+$("familyBtn").onclick = () => { $("familyResults").innerHTML = ""; $("familyDialog").showModal(); renderFamily(); };
+$("familyClose").onclick = () => $("familyDialog").close();
+$("familyForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  $("familyError").textContent = "";
+  try {
+    const out = await send("/api/spaces", { names: $("familyNames").value });
+    renderPins(out.created);
+    await renderFamily();
+    if (out.skipped.length) $("familyError").textContent = out.skipped.map((s) => s.name + " " + s.reason).join(". ") + ".";
+  } catch (err) { $("familyError").textContent = err.message; }
+});
+
 /* ---------- start ---------- */
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
 $("search").value = "";
-const sharedLink = takeSharedLink();
-load().then(() => { if (sharedLink) addItem({ url: sharedLink }); });
+$("exportLink").href = "/api/export?space=" + encodeURIComponent(SPACE);
+
+async function boot() {
+  const sharedLink = takeSharedLink();
+  if (SPACE) {
+    $("siteTitle").textContent = "";
+    $("manifestLink").href = "/api/manifest/" + SPACE;
+  }
+  let info;
+  try { info = await api("/api/space-info"); }
+  catch (e) { if (e.status === 404) { showMissing(); return; } info = { name: "Ffi", root: !SPACE }; }
+  const title = possessive(info.name) + " Presents";
+  $("siteTitle").textContent = title;
+  document.title = title;
+  $("familyBtn").hidden = !!SPACE;
+  $("pinBtn").hidden = !SPACE; $("lockBtn").hidden = !SPACE;
+  if (sharedLink) afterSignIn = () => addItem({ url: sharedLink });
+  if (await load() && afterSignIn) { const f = afterSignIn; afterSignIn = null; f(); }
+}
+boot();

@@ -8,11 +8,18 @@ jobs:
   backup:
     runs-on: ubuntu-latest
     steps:
-      - name: Export items from the live app
+      - name: Export everything from the live app
         env:
           APP_URL: ${{ secrets.APP_URL }}
+          APP_PASSWORD: ${{ secrets.APP_PASSWORD }}
         run: |
-          curl -fsS --retry 5 --retry-delay 30 --max-time 120 "$APP_URL/api/export" -o items.json
+          # With APP_PASSWORD set on the server, send it (any username works).
+          AUTH=()
+          if [ -n "$APP_PASSWORD" ]; then AUTH=(-u "owner:$APP_PASSWORD"); fi
+          # The full backup (everyone's pages) needs the password; without one, fall back to the single site.
+          if ! curl -fsS --retry 5 --retry-delay 30 --max-time 120 "${AUTH[@]}" "$APP_URL/api/export-all" -o items.json; then
+            curl -fsS --retry 5 --retry-delay 30 --max-time 120 "${AUTH[@]}" "$APP_URL/api/export" -o items.json
+          fi
           case "$(head -c1 items.json)" in "{"|"[") ;; *) echo "Export did not look like JSON"; exit 1 ;; esac
       - uses: actions/upload-artifact@v4
         with:

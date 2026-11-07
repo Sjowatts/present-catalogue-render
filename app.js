@@ -35,7 +35,11 @@ let dbReady = false;
 let sessionSecret = null;
 
 const app = express();
-app.use(express.json());
+// Most requests are small. Restores and wishlist imports are big, so they bring their own larger parser
+// (it runs after the password/PIN checks, so strangers can't send huge bodies).
+const smallJson = express.json();
+const BIG_JSON_ROUTES = new Set(["/api/import", "/api/wishlist-import"]);
+app.use((req, res, next) => (BIG_JSON_ROUTES.has(req.path) ? next() : smallJson(req, res, next)));
 app.use(express.urlencoded({ extended: true }));
 
 // Behind Render/Fly the real visitor address is in X-Forwarded-For.
@@ -622,6 +626,58 @@ app.post("/api/items/manual", async (req, res) => {
   await recordPrice(id, conv.value, conv.currency);
   const { rows } = await pool.query(`SELECT * FROM items WHERE id=$1`, [id]);
   res.json(rows[0]);
+});
+
+// Import a whole wishlist captured in the person's own browser (shops like Amazon block this server from
+// reading it). Each entry is { url, title, image, price, currency }. Links already on the page are skipped.
+const WISHLIST_MAX = 500;
+app.post("/api/wishlist-import", express.json({ limit: "5mb" }), async (req, res) => {
+  const raw = Array.isArray(req.body?.items) ? req.body.items : null;
+  if (!raw || !raw.length) return res.status(400).json({ error: "That wishlist is empty" });
+  if (raw.length > WISHLIST_MAX) return res.status(400).json({ error: "Too many presents at once (the limit is " + WISHLIST_MAX + "). Import it in parts." });
+
+  let list = null;
+  if (req.body?.list_id) {
+    const { rows } = await pool.query(`SELECT id, name FROM lists WHERE id=$1 AND space=$2`, [req.body.list_id, req.space]);
+    if (!rows.length) return res.status(404).json({ error: "That list wasn't found" });
+    list = rows[0];
+  }
+  const newName = cleanText(req.body?.list_name, 60);
+  if (!list && req.body?.list_id === undefined && req.body?.list_name !== undefined && !newName) return res.status(400).json({ error: "Give the new list a name" });
+
+  const seen = new Set((await pool.query(`SELECT url FROM items WHERE url <> '' AND space=$1`, [req.space])).rows.map((r) => urlKey(r.url)));
+  const fresh = [];
+  let skipped = 0, invalid = 0;
+  for (const it of raw) {
+    const found = extractUrl(it?.url);
+    if (!found) { invalid++; continue; }
+    const url = cleanUrl(found);
+    const key = urlKey(url);
+    if (seen.has(key)) { skipped++; continue; }
+    seen.add(key);
+    fresh.push({ url, it });
+  }
+  if (!list && newName && fresh.length) {
+    const made = { id: newId(), name: newName };
+    await pool.query(`INSERT INTO lists (id, name, space) VALUES ($1,$2,$3)`, [made.id, made.name, req.space]);
+    list = made;
+  }
+
+  let added = 0;
+  for (const { url, it } of fresh) {
+    const price = parsePrice(it.price);
+    const conv = await toGBP(price === undefined ? null : price, it.currency);
+    const image = httpUrlOrNull(String(it.image ?? "").trim());
+    const id = newId();
+    await pool.query(
+      `INSERT INTO items (id,url,store,title,image,description,price_value,price_currency,last_checked,source,bought,notes,list_id,orig_value,orig_currency,space)
+       VALUES ($1,$2,$3,$4,$5,null,$6,$7,now(),'wishlist',false,null,$8,$9,$10,$11)`,
+      [id, url, normalizeHost(url), cleanText(it.title, 200) || titleFromUrl(url), image, conv.value, conv.currency,
+       list ? list.id : null, conv.orig ? conv.orig.value : null, conv.orig ? conv.orig.currency : null, req.space]);
+    await recordPrice(id, conv.value, conv.currency);
+    added++;
+  }
+  res.json({ added, skipped, invalid, list });
 });
 
 // Edit a present by hand. Send only the fields to change. Changing the price protects it from

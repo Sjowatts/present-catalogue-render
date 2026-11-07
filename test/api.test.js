@@ -235,3 +235,52 @@ test("saved prices in other currencies are converted once, history included", { 
   assert.deepEqual(item.history.map((h) => [h.p, h.c]), [[100, "GBP"], [80, "GBP"]]);
   await fetch(s.base + "/api/items/" + id, { method: "DELETE" });
 });
+
+test("restoring a big backup works (more than 100 KB)", { skip: !hasDb }, async (t) => {
+  const s = await startServer(3240);
+  t.after(s.stop);
+  const uid = Date.now().toString(36);
+  const items = Array.from({ length: 1500 }, (_, i) => ({ id: `big_${uid}_${i}`, url: `https://example.com/big/${uid}/${i}`, title: "Big " + i + " " + "x".repeat(120), description: "d".repeat(300) }));
+  const r = await post(s.base, "/api/import", { items });
+  assert.equal(r.status, 200);
+  assert.equal((await r.json()).added, 1500);
+  const got = await (await fetch(s.base + "/api/items")).json();
+  for (const it of got.filter((x) => x.id.startsWith(`big_${uid}_`))) await fetch(s.base + "/api/items/" + it.id, { method: "DELETE" });
+});
+
+test("wishlist import: new list, duplicates skipped, pounds, bad entries", { skip: !hasDb }, async (t) => {
+  const s = await startServer(3241);
+  t.after(s.stop);
+  const uid = Date.now().toString(36);
+  const A = (n) => `https://www.amazon.co.uk/dp/B0${uid.toUpperCase().replace(/[^A-Z0-9]/g, "X").padEnd(7, "X").slice(0, 7)}${n}`;
+  const items = [
+    { url: A(1) + "/?coliid=ABC&th=1", title: "Lego set", image: "https://m.media-amazon.com/images/I/a.jpg", price: "£24.99", currency: "GBP" },
+    { url: A(2), title: "Headphones", image: "https://m.media-amazon.com/images/I/b.jpg", price: "49.50", currency: "GBP" },
+    { url: A(1) + "?ref=lv_ov", title: "Lego set again", price: "£24.99" },
+    { url: "not a link at all", title: "Broken" },
+    { url: A(3), title: "No price yet" }
+  ];
+  assert.equal((await post(s.base, "/api/wishlist-import", { items: [] })).status, 400);
+  assert.equal((await post(s.base, "/api/wishlist-import", { items: Array.from({ length: 501 }, () => items[0]) })).status, 400);
+  assert.equal((await post(s.base, "/api/wishlist-import", { items, list_id: "nope" })).status, 404);
+
+  const r = await (await post(s.base, "/api/wishlist-import", { items, list_name: "Wishlist " + uid })).json();
+  assert.deepEqual([r.added, r.skipped, r.invalid], [3, 1, 1]);
+  assert.equal(r.list.name, "Wishlist " + uid);
+
+  const got = (await (await fetch(s.base + "/api/items")).json()).filter((x) => x.list_id === r.list.id);
+  assert.equal(got.length, 3);
+  const lego = got.find((x) => x.title === "Lego set");
+  assert.equal(Number(lego.price_value), 24.99);
+  assert.equal(lego.price_currency, "GBP");
+  assert.equal(lego.source, "wishlist");
+  assert.ok(!lego.url.includes("coliid"));            // tidied to /dp/<code>
+  assert.equal(got.find((x) => x.title === "No price yet").price_value, null);
+
+  // importing the same list again adds nothing
+  const again = await (await post(s.base, "/api/wishlist-import", { items, list_id: r.list.id })).json();
+  assert.deepEqual([again.added, again.skipped], [0, 4]);
+
+  for (const it of got) await fetch(s.base + "/api/items/" + it.id, { method: "DELETE" });
+  await fetch(s.base + "/api/lists/" + r.list.id, { method: "DELETE" });
+});

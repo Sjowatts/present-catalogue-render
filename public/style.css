@@ -228,3 +228,4 @@ body.locked main, body.locked .topbar-actions { visibility:hidden }
 
 .brand-text { display:flex; flex-direction:column; gap:2px; min-width:0 }
 .whose { margin:0; font:500 14px var(--body); color:var(--accent); letter-spacing:.01em }
+.dlg textarea { width:100%; min-height:96px; resize:vertical; padding:12px 14px; background:var(--inset); color:var(--text); border:1px solid var(--border-strong); border-radius:12px; font:400 14px var(--body) }

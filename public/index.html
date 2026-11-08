@@ -35,6 +35,7 @@
       <button type="button" class="btn" id="alertsBtn">Notifications</button>
       <a href="/api/export" id="exportLink" download style="text-decoration:none"><button type="button" class="btn">Export</button></a>
       <button type="button" class="btn" id="importBtn">Import</button>
+      <button type="button" class="btn" id="wishlistBtn">Import a wishlist</button>
       <input type="file" id="importFile" accept="application/json" hidden>
       <button type="button" class="btn" id="pinBtn" hidden>Change PIN</button>
       <button type="button" class="btn" id="lockBtn" hidden>Sign out</button>
@@ -135,6 +136,29 @@
         <button type="submit" class="btn btn-violet" id="itemSave">Save</button>
       </div>
     </form>
+  </dialog>
+
+  <dialog id="wishlistDialog" aria-labelledby="wishlistTitle" class="wide">
+    <div class="dlg">
+      <h2 id="wishlistTitle">Import an Amazon wishlist</h2>
+      <p>Amazon doesn't let this site read its pages, so this copies the list using <b>your own browser</b>, then you paste it here.</p>
+      <h3>1. Save the bookmark (once)</h3>
+      <p>Show your bookmarks bar (Chrome: <b>View → Always Show Bookmarks Bar</b>; Safari: <b>View → Show Favorites Bar</b>), then drag this button onto it:</p>
+      <p><a id="wishlistMarklet" class="btn btn-small" href="#">Copy wishlist</a> <button type="button" class="btn btn-small" id="wishlistMarkletCopy">Copy as text</button></p>
+      <h3>2. Copy your list</h3>
+      <p>Open the Amazon wishlist (make sure it's shared or public), then click the <b>Copy wishlist</b> bookmark. It scrolls down to load every present, then tells you it has copied them.</p>
+      <h3>3. Paste it here</h3>
+      <textarea id="wishlistPaste" rows="4" placeholder="Paste here (Cmd+V or Ctrl+V)" aria-label="Pasted wishlist"></textarea>
+      <label>Add them to
+        <select id="wishlistList"></select>
+      </label>
+      <label id="wishlistNameRow" hidden>New list name <input id="wishlistName" maxlength="60"></label>
+      <p class="status" id="wishlistMsg" role="status" aria-live="polite"></p>
+      <div class="dlg-actions">
+        <button type="button" class="btn" id="wishlistClose">Close</button>
+        <button type="button" class="btn btn-violet" id="wishlistGo">Import</button>
+      </div>
+    </div>
   </dialog>
 
   <dialog id="phoneDialog" aria-labelledby="phoneTitle" class="wide">

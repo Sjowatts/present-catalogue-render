@@ -50,3 +50,7 @@ a new PIN) and then import.
 ## Share everything
 
 On any page, **Share everything** makes one private link (`/w/<code>`) covering that person's whole page: every list, with pictures, prices and working product links. Anyone with the link can look and tick "I'll get this", but can't change anything and never sees notes or other people's pages. "Stop sharing" kills the link; making a new one gives a different address. Deleting a person's page also kills its link. (Each list still has its own single-list link from its **Share** button.)
+
+## Import a wishlist
+
+**Import a wishlist** (top bar) brings in a whole Amazon wishlist. Amazon won't let the server read its pages, so a **Copy wishlist** bookmark reads the list in the person's own browser (it scrolls to load every present first), copies it, and they paste it into the dialog. Presents already on the page are skipped, links are tidied to `/dp/<code>`, and prices are converted to pounds. Limit: 500 presents per import; import bigger lists in parts.

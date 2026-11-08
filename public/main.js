@@ -551,6 +551,57 @@ $("itemForm").addEventListener("submit", async (e) => {
   save.disabled = false;
 });
 
+/* ---------- import a wishlist ---------- */
+// The "Copy wishlist" bookmark (ffiWishlist in extract.js) reads an Amazon wishlist in your own browser and
+// copies it; you paste it here and it is added, skipping anything already on this page.
+const wishlistHref = () => "javascript:(function(){" + ffiWishlist.toString().replace(/\s*\n\s*/g, " ") + ";ffiWishlist();})()";
+const NEW_LIST = "__new__";
+function parseWishlist(text) {
+  const t = String(text || "").trim();
+  if (!t.startsWith("FFI-WISHLIST:")) throw new Error("That isn't a copied wishlist. Click the Copy wishlist bookmark on the Amazon list first, then paste.");
+  let data;
+  try { data = JSON.parse(t.slice("FFI-WISHLIST:".length)); } catch { throw new Error("The pasted text looks cut off. Try copying again."); }
+  if (!data || !Array.isArray(data.items) || !data.items.length) throw new Error("That wishlist has no presents in it.");
+  return data;
+}
+function openWishlistDialog() {
+  $("wishlistMarklet").href = wishlistHref();
+  const cur = activeList();
+  $("wishlistList").innerHTML = '<option value="' + NEW_LIST + '">A new list</option>' +
+    lists.map((l) => '<option value="' + esc(l.id) + '"' + (cur && cur.id === l.id ? " selected" : "") + ">" + esc(l.name) + "</option>").join("") +
+    '<option value="">No list</option>';
+  $("wishlistPaste").value = ""; $("wishlistName").value = ""; $("wishlistMsg").textContent = "";
+  $("wishlistNameRow").hidden = $("wishlistList").value !== NEW_LIST;
+  $("wishlistDialog").showModal();
+}
+$("wishlistBtn").onclick = openWishlistDialog;
+$("wishlistClose").onclick = () => $("wishlistDialog").close();
+$("wishlistMarklet").addEventListener("click", (e) => e.preventDefault());
+$("wishlistMarkletCopy").onclick = (e) => copyText(wishlistHref(), e.target);
+$("wishlistList").onchange = () => { $("wishlistNameRow").hidden = $("wishlistList").value !== NEW_LIST; };
+$("wishlistPaste").addEventListener("input", () => {
+  try { const d = parseWishlist($("wishlistPaste").value); if (!$("wishlistName").value) $("wishlistName").value = d.name || ""; $("wishlistMsg").textContent = d.items.length + " presents ready to import."; $("wishlistMsg").classList.remove("error"); }
+  catch { $("wishlistMsg").textContent = ""; }
+});
+$("wishlistGo").onclick = async () => {
+  const msg = $("wishlistMsg"), btn = $("wishlistGo");
+  msg.classList.remove("error");
+  try {
+    const data = parseWishlist($("wishlistPaste").value);
+    const where = $("wishlistList").value;
+    const body = { items: data.items };
+    if (where === NEW_LIST) body.list_name = $("wishlistName").value.trim() || data.name || "Wishlist";
+    else if (where) body.list_id = where;
+    btn.disabled = true; msg.textContent = "Importing " + data.items.length + " presents…";
+    const r = await send("/api/wishlist-import", body);
+    if (r.list) prefs.list = r.list.id; else prefs.list = "all";
+    savePrefs();
+    await load();
+    msg.textContent = "Added " + r.added + (r.skipped ? ", skipped " + r.skipped + " already here" : "") + (r.invalid ? ", " + r.invalid + " had no usable link" : "") + ".";
+  } catch (e) { msg.classList.add("error"); msg.textContent = e.message; }
+  btn.disabled = false;
+};
+
 /* ---------- add from phone ---------- */
 // The two small functions in extract.js read the shop page in your own browser (so a shop that blocks
 // this site can't stop it) and build a link back here that carries the name, picture and price.

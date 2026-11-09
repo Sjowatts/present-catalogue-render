@@ -260,7 +260,8 @@ test("alerts go to each person's own topic", { skip: !hasDb }, async (t) => {
 
   assert.equal((await m.post("/api/alerts/test", {})).status, 200);
   assert.equal(got.at(-1).topic, "mums-secret-topic-" + uid);
-  assert.match(got.at(-1).title, /^Mum\w+'s? Presents test$/);
+  assert.equal(got.at(-1).title, "Test from Present Catalogue");
+  assert.match(got.at(-1).message, /^Notifications for Mum\w+'s? page are working\.$/);
 
   const item = await (await m.post("/api/add", { url: `http://127.0.0.1:${port}/p/a-${uid}` })).json();
   const dadItem = await (await d.post("/api/add", { url: `http://127.0.0.1:${port}/p/b-${uid}` })).json();
@@ -270,7 +271,7 @@ test("alerts go to each person's own topic", { skip: !hasDb }, async (t) => {
   await d.post("/api/refresh/" + dadItem.id, {}); // Dad has no topic, so nothing is sent for his
   assert.equal(got.length, before + 1);
   assert.equal(got.at(-1).topic, "mums-secret-topic-" + uid);
-  assert.match(got.at(-1).message, /£40\.00 \(was £50\.00, 20% off\)/);
+  assert.match(got.at(-1).message, /^Mum\w+'s? list: now £40\.00, was £50\.00 \(20% off\)$/);
 
   // turning alerts off
   assert.deepEqual(await (await m.post("/api/alerts/topic", { topic: "" })).json(), { enabled: false });
@@ -470,8 +471,8 @@ test("notifications: price rises, and someone ticking I'll get this", { skip: !h
   state.price = 60; await m.post("/api/refresh/" + item.id, {});
   assert.equal(got.length, n + 1);
   assert.equal(got.at(-1).topic, topic);
-  assert.match(got.at(-1).title, /^Price up: /);
-  assert.match(got.at(-1).message, /£60\.00 \(was £50\.40, 19% more\)/);
+  assert.equal(got.at(-1).title, "Price rise on Vase");
+  assert.match(got.at(-1).message, /^Mum\w+'s? list: now £60\.00, was £50\.40 \(19% more\)$/);
 
   // someone ticking "I'll get this" on a shared page tells that page's phone, once
   const { token } = await (await m.post("/api/page-share", { enabled: true })).json();
@@ -481,7 +482,7 @@ test("notifications: price rises, and someone ticking I'll get this", { skip: !h
   await new Promise((r) => setTimeout(r, 300));
   assert.equal(got.length, n + 1);
   assert.equal(got.at(-1).topic, topic);
-  assert.equal(got.at(-1).title, "Sam is getting a present");
+  assert.match(got.at(-1).title, /^Sam is getting Mum\w+'s? a present$/);
   assert.equal(got.at(-1).message, "Vase");
 
   await anon(`/api/pageshare/${token}/claim`, { itemId: item.id, name: "Sam" }); // ticking again: nothing new
@@ -493,6 +494,7 @@ test("notifications: price rises, and someone ticking I'll get this", { skip: !h
   await new Promise((r) => setTimeout(r, 300));
   assert.equal(got.length, n + 2);
   assert.equal(got.at(-1).title, "Sam changed their mind");
+  assert.match(got.at(-1).message, /^Vase is free again \(Mum\w+'s? list\)$/);
 
   // Dad has no topic, so a claim on his page sends nothing and still works
   const dshare = (await (await d.post("/api/page-share", { enabled: true })).json()).token;

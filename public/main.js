@@ -647,7 +647,10 @@ function takeSharedLink() {
 }
 
 /* ---------- price alerts ---------- */
-const randomTopic = () => Array.from(crypto.getRandomValues(new Uint8Array(20)), (b) => "abcdefghijklmnopqrstuvwxyz0123456789"[b % 36]).join("");
+// A suggested topic name that says whose page it is (e.g. presents-owain-k3x9q2m7p4zt), still with a long random
+// tail so nobody can guess it.
+const randomTopic = () => "presents-" + (SPACE || "ffi").replace(/[^a-z0-9]/g, "").slice(0, 12) + "-" +
+  Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) => "abcdefghijklmnopqrstuvwxyz0123456789"[b % 36]).join("");
 async function openAlertsDialog() {
   $("alertsBody").innerHTML = "<p>Checking…</p>";
   $("alertsDialog").showModal();
@@ -676,7 +679,8 @@ async function openAlertsDialog() {
     $("alertsBody").innerHTML = "<p>Get a notification on your phone when a price changes or someone says they’ll get a present. It's free and needs no account.</p><ol>" +
       "<li>Install the free <b>ntfy</b> app on your phone, tap <b>+</b>, and subscribe to this secret topic name:</li>" +
       '<li><div class="copyrow"><input id="topicBox" value="' + esc(topic) + '" aria-label="Secret topic name" maxlength="64"><button type="button" class="btn" id="topicCopy">Copy</button></div></li>' +
-      "<li>Press <b>Turn on notifications</b> below, then send yourself a test.</li></ol>" +
+      "<li>Press <b>Turn on notifications</b> below, then send yourself a test.</li>" +
+      "<li>Tip: in the ntfy app, open the topic, tap the settings cog and set a <b>Display name</b> (for example the person's name), so your list of topics is easy to read.</li></ol>" +
       "<p>Keep the topic name private: anyone who knows it can read your alerts. To check prices every day on their own, the daily price check also needs to be switched on.</p>" +
       '<div class="dlg-actions"><button type="button" class="btn btn-violet" id="topicSave">Turn on notifications</button></div><p class="status" id="alertMsg" role="status"></p>';
     $("topicCopy").onclick = async (e) => {

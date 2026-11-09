@@ -756,11 +756,11 @@ async function refreshItem(id, space = null) {
   const item = fresh[0];
   item.lookup = { unread: data.unread, blocked: data.blocked };
   if (!priceLocked && cur.price_currency === "GBP" && item.price_currency === "GBP") {
-    const msg = priceDropped(cur.price_value, item.price_value) ? dropMessage(item, cur.price_value, item.price_value)
-      : priceRose(cur.price_value, item.price_value) ? riseMessage(item, cur.price_value, item.price_value) : null;
-    const topic = msg && topicOf(await getSpace(cur.space), cur.space);
+    const changed = priceDropped(cur.price_value, item.price_value) ? dropMessage : priceRose(cur.price_value, item.price_value) ? riseMessage : null;
+    const sp = changed && await getSpace(cur.space);
+    const topic = changed && topicOf(sp, cur.space);
     if (topic) {
-      const r = await sendAlert({ ...msg, topic });
+      const r = await sendAlert({ ...changed(item, cur.price_value, item.price_value, possessive(sp?.name || "Ffi")), topic });
       if (!r.sent) console.error("Price alert not sent:", r.reason);
     }
   }
@@ -816,7 +816,7 @@ app.post("/api/alerts/test", async (req, res) => {
   const topic = topicOf(await getSpace(req.space), req.space);
   if (!topic) return res.status(400).json({ error: "Alerts aren't switched on yet. Save a topic name first." });
   const sp = await getSpace(req.space);
-  const r = await sendAlert({ topic, title: possessive(sp?.name || "Ffi") + " Presents test", message: "If you can read this, notifications are working.", tags: ["white_check_mark"] });
+  const r = await sendAlert({ topic, title: "Test from Present Catalogue", message: "Notifications for " + possessive(sp?.name || "Ffi") + " page are working.", tags: ["white_check_mark"] });
   if (!r.sent) return res.status(502).json({ error: "Couldn't send the alert: " + r.reason });
   res.json({ ok: true });
 });
@@ -882,9 +882,10 @@ async function claimItem(req, res, scopeSql, scopeArgs) {
   if (claimed ? owner : !owner) return; // ticking again, or unticking something nobody had: nothing changed
   try {
     const { rows: [it] } = await pool.query(`SELECT space, title, url FROM items WHERE id=$1`, [rows[0].id]);
-    const topic = it && topicOf(await getSpace(it.space), it.space);
+    const sp = it && await getSpace(it.space);
+    const topic = it && topicOf(sp, it.space);
     if (topic) {
-      const r = await sendAlert({ ...claimMessage(it, name, claimed), topic });
+      const r = await sendAlert({ ...claimMessage(it, name, claimed, possessive(sp?.name || "Ffi")), topic });
       if (!r.sent) console.error("Claim alert not sent:", r.reason);
     }
   } catch (e) { console.error("Claim alert failed:", e.message); }

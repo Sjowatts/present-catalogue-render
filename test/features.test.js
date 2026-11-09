@@ -170,8 +170,8 @@ test("price-drop alerts", { skip: !hasDb }, async (t) => {
   await post(s.base, "/api/refresh/" + item.id, {});
   assert.equal(ntfy.got.length, 1);
   assert.equal(ntfy.got[0].topic, "test-topic-123");
-  assert.match(ntfy.got[0].title, /Price drop: Candle Set/);
-  assert.match(ntfy.got[0].message, /£45\.00 \(was £50\.00, 10% off\)/);
+  assert.equal(ntfy.got[0].title, "Price drop on Candle Set");
+  assert.match(ntfy.got[0].message, /^Ffi's list: now £45\.00, was £50\.00 \(10% off\)$/);
   assert.equal(ntfy.got[0].click, item.url);
 
   state.price = 44.5; // only 1.1% lower: not worth an alert
@@ -180,8 +180,8 @@ test("price-drop alerts", { skip: !hasDb }, async (t) => {
   state.price = 60; // a rise of 2% or more is announced too
   await post(s.base, "/api/refresh/" + item.id, {});
   assert.equal(ntfy.got.length, 2);
-  assert.match(ntfy.got[1].title, /Price up: Candle Set/);
-  assert.match(ntfy.got[1].message, /£60\.00 \(was £44\.50, 35% more\)/);
+  assert.equal(ntfy.got[1].title, "Price rise on Candle Set");
+  assert.match(ntfy.got[1].message, /^Ffi's list: now £60\.00, was £44\.50 \(35% more\)$/);
 
   // protected prices never alert
   await post(s.base, `/api/items/${item.id}/edit`, { price: 80 });

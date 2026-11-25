@@ -400,7 +400,7 @@ test("share everything: one link per person, only that person's presents, claim 
 
   const list = await (await m.post("/api/lists", { name: "Birthday" })).json();
   await m.post("/api/import", { items: [
-    { id: "m1_" + uid, url: "https://example.com/m1", title: "Mum scarf", price_value: 9, notes: "secret note" },
+    { id: "m1_" + uid, url: "https://example.com/m1", title: "Mum scarf", price_value: 9, notes: "Size 10, navy" },
     { id: "m2_" + uid, url: "https://example.com/m2", title: "Mum book", price_value: 7 }] });
   await m.post(`/api/items/m1_${uid}/list`, { list_id: list.id });
   await d.post("/api/import", { items: [{ id: "d1_" + uid, url: "https://example.com/d1", title: "Dad socks", price_value: 4 }] });
@@ -412,13 +412,14 @@ test("share everything: one link per person, only that person's presents, claim 
   const { token } = await (await m.post("/api/page-share", { enabled: true })).json();
   assert.match(token, /^[a-f0-9]{32}$/);
 
-  // no PIN needed to look; shows only Mum's lists and presents, no notes
+  // no PIN needed to look; shows only Mum's lists and presents, with their notes
   const anon = (p, body) => fetch(s.base + p, { method: body ? "POST" : "GET", headers: { "content-type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
   const view = await (await anon("/api/pageshare/" + token)).json();
   assert.equal(view.title, mum.name);
   assert.deepEqual(view.items.map((i) => i.title).sort(), ["Mum book", "Mum scarf"]);
   assert.deepEqual(view.lists.map((l) => l.name), ["Birthday"]);
-  assert.ok(view.items.every((i) => !("notes" in i)));
+  assert.equal(view.items.find((i) => i.title === "Mum scarf").notes, "Size 10, navy");
+  assert.ok(view.items.every((i) => !("space" in i) && !("source" in i) && !("price_locked" in i)));
   assert.equal((await anon("/w/" + token)).status, 200);
 
   // claiming works, and only for Mum's presents

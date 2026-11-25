@@ -78,12 +78,12 @@ test("lists, budgets, favourites, price history and export", { skip: !hasDb }, a
   for (const id of ["t1_" + uid, "t2_" + uid]) await fetch(s.base + "/api/items/" + id, { method: "DELETE" });
 });
 
-test("shared list: hides notes, claims, revoking", { skip: !hasDb }, async (t) => {
+test("shared list: shows notes (sizes etc.) but nothing private, claims, revoking", { skip: !hasDb }, async (t) => {
   const s = await startServer(3202);
   t.after(s.stop);
   const uid = Date.now().toString(36);
   const list = await (await post(s.base, "/api/lists", { name: "Share " + uid })).json();
-  await post(s.base, "/api/import", { items: [{ id: "s1_" + uid, url: "https://example.com/s", title: "Shared one", price_value: 5, notes: "private note" }] });
+  await post(s.base, "/api/import", { items: [{ id: "s1_" + uid, url: "https://example.com/s", title: "Shared one", price_value: 5, notes: "Size M, blue please\nDeliver to Mum" }] });
   await post(s.base, `/api/items/s1_${uid}/list`, { list_id: list.id });
 
   assert.equal((await fetch(s.base + "/api/share/" + "0".repeat(32))).status, 404);
@@ -94,7 +94,8 @@ test("shared list: hides notes, claims, revoking", { skip: !hasDb }, async (t) =
   const view = await (await fetch(s.base + "/api/share/" + shared.share_token)).json();
   assert.equal(view.list.name, "Share " + uid);
   assert.equal(view.items.length, 1);
-  assert.ok(!("notes" in view.items[0]));
+  assert.equal(view.items[0].notes, "Size M, blue please\nDeliver to Mum");
+  for (const hidden of ["space", "source", "price_locked", "details_locked", "last_checked", "list_id", "store"]) assert.ok(!(hidden in view.items[0]), hidden + " must not be shared");
 
   const claim = (body) => post(s.base, `/api/share/${shared.share_token}/claim`, { itemId: "s1_" + uid, ...body });
   assert.equal((await claim({})).status, 400);

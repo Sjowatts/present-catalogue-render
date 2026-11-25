@@ -49,7 +49,7 @@ a new PIN) and then import.
 
 ## Share everything
 
-On any page, **Share everything** makes one private link (`/w/<code>`) covering that person's whole page: every list, with pictures, prices and working product links. Anyone with the link can look and tick "I'll get this", but can't change anything and never sees notes or other people's pages. "Stop sharing" kills the link; making a new one gives a different address. Deleting a person's page also kills its link. (Each list still has its own single-list link from its **Share** button.)
+On any page, **Share everything** makes one private link (`/w/<code>`) covering that person's whole page: every list, with pictures, prices and working product links. Anyone with the link can look and tick "I'll get this", but can't change anything or see other people's pages. They do see the **Notes** on each present (sizes, colours, delivery), so keep anything private out of the notes. "Stop sharing" kills the link; making a new one gives a different address. Deleting a person's page also kills its link. (Each list still has its own single-list link from its **Share** button.)
 
 ## Import a wishlist
 

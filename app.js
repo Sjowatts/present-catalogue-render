@@ -852,12 +852,12 @@ const listByToken = async (token) => {
 
 app.get("/s/:token", (_req, res) => res.sendFile(path.join(publicDir, "shared.html")));
 
-// Only what a visitor needs: no notes, no other lists.
+// Only what a visitor needs: the present's details and notes (sizes, colours...), but no other lists.
 app.get("/api/share/:token", async (req, res) => {
   const list = await listByToken(req.params.token);
   if (!list) return res.status(404).json({ error: "This link isn't active any more" });
   const { rows } = await pool.query(
-    `SELECT id, title, image, url, description, price_value, price_currency, orig_value, orig_currency, bought, claimed_by, favourite
+    `SELECT id, title, image, url, description, notes, price_value, price_currency, orig_value, orig_currency, bought, claimed_by, favourite
      FROM items WHERE list_id=$1 ORDER BY favourite DESC, created_at DESC, id DESC`, [list.id]);
   res.json({ list: { name: list.name }, items: rows });
 });
@@ -898,7 +898,7 @@ app.post("/api/share/:token/claim", async (req, res) => {
 });
 
 /* ---------------- Share everything: one link for a whole person's page ---------------- */
-const SHARE_ITEM_COLUMNS = `id, list_id, title, image, url, description, price_value, price_currency, orig_value, orig_currency, bought, claimed_by, favourite`;
+const SHARE_ITEM_COLUMNS = `id, list_id, title, image, url, description, notes, price_value, price_currency, orig_value, orig_currency, bought, claimed_by, favourite`;
 const pageByToken = async (token) => {
   if (!/^[a-f0-9]{32}$/.test(String(token))) return null;
   const { rows } = await pool.query(`SELECT space FROM page_shares WHERE token=$1`, [token]);
@@ -924,7 +924,7 @@ app.post("/api/page-share", async (req, res) => {
 
 app.get("/w/:token", (_req, res) => res.sendFile(path.join(publicDir, "shared.html")));
 
-// Names, prices, pictures and links of every list on the page. No notes, no PIN, nothing else.
+// Names, prices, pictures, links and notes of every list on the page. No PIN, nothing else.
 app.get("/api/pageshare/:token", async (req, res) => {
   const share = await pageByToken(req.params.token);
   if (!share) return res.status(404).json({ error: "This link isn't active any more" });

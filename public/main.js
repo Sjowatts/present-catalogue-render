@@ -375,7 +375,7 @@ $("panel").addEventListener("click", async (e) => {
 /* share dialog */
 function shareHtml(list) {
   if (!list.share_token) {
-    return "<p>Make a private link for this list. Anyone with the link can see the presents and tick “I’ll get this” so nobody buys the same thing. They can’t change anything else, and they never see your notes.</p>" +
+    return "<p>Make a private link for this list. Anyone with the link can see the presents and tick “I’ll get this” so nobody buys the same thing. They can’t change anything else. They do see the Notes you write on each present (sizes, colours, delivery), so keep anything private out of them.</p>" +
       '<div class="dlg-actions"><button type="button" class="btn btn-violet" id="shareOn">Create link</button></div>';
   }
   const link = location.origin + "/s/" + list.share_token;
@@ -394,7 +394,7 @@ function openShare(list) {
 }
 function shareAllHtml(token) {
   if (!token) {
-    return "<p>Make one private link for everything on this page: every list, with all the links, pictures and prices. Whoever has it can look and tick “I’ll get this”, but can’t change anything and never sees your notes.</p>" +
+    return "<p>Make one private link for everything on this page: every list, with all the links, pictures and prices. Whoever has it can look and tick “I’ll get this”, but can’t change anything. They do see the Notes you write on each present (sizes, colours, delivery), so keep anything private out of them.</p>" +
       '<div class="dlg-actions"><button type="button" class="btn btn-violet" id="shareOn">Create link</button></div>';
   }
   const link = location.origin + "/w/" + token;

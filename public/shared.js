@@ -38,6 +38,7 @@ function cardHtml(it, i) {
     '<div class="body"><h2 class="title">' + esc(it.title || "(No title)") + "</h2>" +
     (it.orig_currency && it.orig_value != null && it.price_currency === "GBP" ? '<p class="orig">Converted from ' + esc(money(Number(it.orig_value), it.orig_currency)) + " (approx.)</p>" : "") +
     (it.description ? '<p class="desc">' + esc(it.description) + "</p>" : "") +
+    (it.notes && String(it.notes).trim() ? '<div class="note"><span class="note-label">Notes</span><p>' + esc(String(it.notes).trim()) + "</p></div>" : "") +
     '<div class="linkrow">' + (href ? '<a href="' + esc(href) + '" target="_blank" rel="noopener">Open product</a>' : "") + "</div>" +
     action + "</div>";
 }
